@@ -1,0 +1,28 @@
+{
+  "manifest_version": 1,
+  "app": {
+    "id": "nas-disk-manager",
+    "name": "Dischi",
+    "version": "0.1.28",
+    "icon": "icon.svg",
+    "category": "storage",
+    "system": true
+  },
+  "run": {
+    "exec": "bin/nas-disk-manager-axum",
+    "socket": "/run/nas-os/apps/nas-disk-manager.sock"
+  },
+  "ui": {
+    "protocol": 1
+  },
+  "provides": [
+    {
+      "capability": "network-disks",
+      "version": 1,
+      "endpoint": "/api/network-disks"
+    }
+  ],
+  "permissions": {
+    "paths": ["/proc", "/sys", "/run/udev"]
+  }
+}
