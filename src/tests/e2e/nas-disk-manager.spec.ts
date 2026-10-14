@@ -259,10 +259,14 @@ test('the disk sidebar stays visible while only the inventory content scrolls', 
     await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
   ).toBe(true);
   expect(
-    await page
-      .getByTestId('app_content')
-      .evaluate((element) => getComputedStyle(element).scrollbarWidth),
-  ).toBe('thin');
+    await page.getByTestId('app_content').evaluate((element) => ({
+      // Chromium uses the shared WebKit scrollbar; a standard width overrides it.
+      scrollbarWidth: getComputedStyle(element).scrollbarWidth,
+      width: getComputedStyle(element, '::-webkit-scrollbar').width,
+      height: getComputedStyle(element, '::-webkit-scrollbar').height,
+      buttonDisplay: getComputedStyle(element, '::-webkit-scrollbar-button').display,
+    })),
+  ).toEqual({ scrollbarWidth: 'auto', width: '8px', height: '8px', buttonDisplay: 'none' });
 });
 
 test('SMART failures have a titled alert and USB removal uses the common switch', async ({
