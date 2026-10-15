@@ -96,7 +96,7 @@ async function saveHeader() {
   const result = await crypt({ op: 'header', uuid: uuid.value });
   const data = result?.data as { header?: unknown } | undefined;
   if (typeof data?.header === 'string') {
-    const bytes = Uint8Array.from(atob(data.header), (character) => character.charCodeAt(0));
+    const bytes = Uint8Array.from(atob(data.header), (character) => character.codePointAt(0)!);
     saveFile(`header-${uuid.value}.img`, bytes, 'application/octet-stream');
   }
 }
