@@ -1,4 +1,5 @@
 import { createNasShell, type NotificationTone } from '@valeriogc/nas-base-app';
+import type { CryptRequest, NetworkRequest } from '@/types';
 
 /** The answer of the launcher to a request about a disk. */
 export interface DiskAnswer {
@@ -29,8 +30,37 @@ export function notifyNasShell(title: string, message = '', tone: NotificationTo
   shell.notify(title, message, tone);
 }
 
-export function initializeNasDisk(device: string, label: string): Promise<DiskAnswer> {
-  return askDisk('initialize-disk', { device, label }, 10 * 60 * 1000);
+/** Whether the NAS may encrypt its data disks. */
+export function readNasDiskEncryption(): Promise<DiskAnswer> {
+  return askDisk('disk-encryption', {}, 10_000);
+}
+
+/** A format waits for the whole disk to be erased and prepared, the rest for one command. */
+export function askNasDiskCrypt(request: CryptRequest): Promise<DiskAnswer> {
+  return askDisk('disk-crypt', { request }, request.op === 'format' ? 16 * 60_000 : 3 * 60_000);
+}
+
+/** The network disks the NAS knows. */
+export function readNasNetworkDisks(): Promise<DiskAnswer> {
+  return askDisk('smb-disks', {}, 10_000);
+}
+
+/** A network disk saved, tried, connected, disconnected or forgotten. */
+export function askNasNetworkDisk(request: NetworkRequest): Promise<DiskAnswer> {
+  return askDisk('smb-disk', { request }, 150_000);
+}
+
+/** The local or external disks, as the launcher classifies them. */
+export function readNasDisks(kind: 'local' | 'external'): Promise<DiskAnswer> {
+  return askDisk('disk-inventory', { kind }, 30_000);
+}
+
+export function initializeNasDisk(
+  device: string,
+  label: string,
+  identity: string,
+): Promise<DiskAnswer> {
+  return askDisk('initialize-disk', { device, label, identity }, 10 * 60 * 1000);
 }
 
 export function renameNasDisk(device: string, label: string): Promise<DiskAnswer> {

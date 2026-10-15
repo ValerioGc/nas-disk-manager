@@ -1,6 +1,5 @@
 <script setup lang="ts">
 
-import { ref } from 'vue';
 import { provideDiskManager } from '@/composables/diskManagerContext';
 import AppSidebar from '@/components/sections/AppSidebar.vue';
 import PageHeader from '@/components/sections/PageHeader.vue';
@@ -8,9 +7,9 @@ import DiskSummary from '@/components/sections/DiskSummary.vue';
 import DiskTable from '@/components/sections/DiskTable.vue';
 import DiskDetails from '@/components/sections/DiskDetails.vue';
 import NetworkDisks from '@/components/sections/NetworkDisks.vue';
+import CloudDisks from '@/components/sections/CloudDisks.vue';
 
 const { kind } = provideDiskManager();
-const is_configured = ref(false);
 
 </script>
 
@@ -21,8 +20,11 @@ const is_configured = ref(false);
       <PageHeader />
       <DiskSummary v-if="kind === 'local'" />
       <NetworkDisks v-if="kind === 'network'" />
-      <DiskTable v-if="kind !== 'network' || is_configured" />
-      <DiskDetails v-if="kind !== 'network' || is_configured" />
+      <CloudDisks v-if="kind === 'cloud'" />
+      <template v-if="kind === 'local' || kind === 'external'">
+        <DiskTable />
+        <DiskDetails />
+      </template>
     </main>
   </div>
 </template>

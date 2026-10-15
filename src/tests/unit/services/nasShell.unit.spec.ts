@@ -5,6 +5,9 @@ import {
   lockNasDisk,
   notifyNasShell,
   readNasDiskLocks,
+  askNasDiskCrypt,
+  readNasDiskEncryption,
+  readNasDisks,
   readNasDiskSmart,
   renameNasDisk,
 } from '@/services/nasShell';
@@ -46,7 +49,7 @@ it('notifies the launcher in its own words', () => {
 });
 
 it('resolves disk initialization only after the matching trusted reply', async () => {
-  const result = initializeNasDisk('sdb', 'Data-1');
+  const result = initializeNasDisk('sdb', 'Data-1', 'wwn/S1/1024');
   const request = parent.postMessage.mock.calls[0][0];
   expect(request).toEqual({
     nas: 1,
@@ -54,6 +57,7 @@ it('resolves disk initialization only after the matching trusted reply', async (
     requestId: expect.any(String),
     device: 'sdb',
     label: 'Data-1',
+    identity: 'wwn/S1/1024',
   });
   arrive(
     {
@@ -119,6 +123,48 @@ it('returns S.M.A.R.T. data from the matching trusted reply', async () => {
     data: { smart_status: { passed: true } },
     error: undefined,
   });
+});
+
+it('asks the shell for the disks of one kind', async () => {
+  const result = readNasDisks('external');
+  const request = parent.postMessage.mock.calls[0][0];
+  expect(request).toEqual({
+    nas: 1,
+    type: 'disk-inventory',
+    requestId: expect.any(String),
+    kind: 'external',
+  });
+  arrive({
+    nas: 1,
+    type: 'disk-inventory-result',
+    requestId: request.requestId,
+    success: true,
+    data: [],
+  });
+  await expect(result).resolves.toMatchObject({ success: true, data: [] });
+});
+
+it('asks the shell whether encryption is on and for a request of encryption', () => {
+  void readNasDiskEncryption();
+  void askNasDiskCrypt({ op: 'lock', uuid: 'luks-1' });
+  void askNasDiskCrypt({
+    op: 'format',
+    device: 'sdb',
+    identity: 'x/y/1',
+    label: 'Data',
+    encrypt: false,
+    automatic: false,
+  });
+  const [state, lock, format] = parent.postMessage.mock.calls.map(([message]) => message);
+
+  expect(state).toEqual({ nas: 1, type: 'disk-encryption', requestId: expect.any(String) });
+  expect(lock).toEqual({
+    nas: 1,
+    type: 'disk-crypt',
+    requestId: expect.any(String),
+    request: { op: 'lock', uuid: 'luks-1' },
+  });
+  expect(format.request.op).toBe('format');
 });
 
 it('asks the shell to eject a disk and to read and change the marks', async () => {

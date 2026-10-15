@@ -34,25 +34,21 @@ const externalDisk = {
   parent: '/dev/sdb',
 };
 
-async function serveDiskInventory(page: Page, hasExternal = true) {
-  const requestedKinds: string[] = [];
-
-  await page.route('**/api/disks*', async (route) => {
-    const kind = new URL(route.request().url()).searchParams.get('kind') ?? 'local';
-    requestedKinds.push(kind);
-    const disks =
-      kind === 'local' ? [localDisk] : kind === 'external' && hasExternal ? [externalDisk] : [];
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(disks),
-    });
-  });
-
-  return requestedKinds;
+interface Inventory {
+  local?: unknown[];
+  external?: unknown[];
+  /** The listing is answered only when the test calls `answerInventory`. */
+  hold?: boolean;
+  /** Whether the launcher has encryption on. */
+  encryption?: boolean;
 }
 
-async function openDiskShell(page: Page) {
+/**
+ * The page of the launcher around the application: it answers the disk requests, the listing
+ * with `inventory`, and writes down what the application asks.
+ */
+async function openDiskShell(page: Page, inventory: Inventory = {}) {
+  const lists = { local: [localDisk], external: [externalDisk], ...inventory };
   await page.route('**/disk-shell', (route) =>
     route.fulfill({
       contentType: 'text/html',
@@ -60,12 +56,27 @@ async function openDiskShell(page: Page) {
       <script>
         window.smartRequest = null;
         window.notices = [];
+        window.requestedKinds = [];
+        window.cryptRequests = [];
+        window.held = [];
+        const lists = ${JSON.stringify(lists)};
+        const reply = (event, message, data) =>
+          event.source.postMessage({ nas: 1, type: message.type + '-result', requestId: message.requestId, success: true, data }, event.origin);
+        window.answerInventory = () => window.held.splice(0).forEach(([event, message]) => reply(event, message, lists[message.kind]));
         window.addEventListener('message', (event) => {
           const message = event.data;
           if (message.type === 'smart-disk') window.smartRequest = message;
           if (message.type === 'notify') window.notices.push(message);
-          if (message.type === 'disk-locks' || message.type === 'eject-disk') {
-            event.source.postMessage({ nas: 1, type: message.type + '-result', requestId: message.requestId, success: true, data: [] }, event.origin);
+          if (message.type === 'disk-inventory') {
+            window.requestedKinds.push(message.kind);
+            if (lists.hold) window.held.push([event, message]);
+            else reply(event, message, lists[message.kind]);
+          }
+          if (message.type === 'disk-locks' || message.type === 'eject-disk') reply(event, message, []);
+          if (message.type === 'disk-encryption') reply(event, message, lists.encryption === true);
+          if (message.type === 'disk-crypt') {
+            window.cryptRequests.push(message.request);
+            reply(event, message, {});
           }
         });
       </script>`,
@@ -78,50 +89,46 @@ async function openDiskShell(page: Page) {
 test('switching disk categories loads the matching inventory and updates its summary', async ({
   page,
 }) => {
-  const requestedKinds = await serveDiskInventory(page);
-  const summary = page.locator('.summary .surface_card');
+  const app = await openDiskShell(page);
+  const summary = app.locator('.summary .surface_card');
   const nvmeCount = summary.filter({ hasText: 'Dischi NVMe' }).locator('strong');
   const sataCount = summary.filter({ hasText: 'Dischi SATA' }).locator('strong');
   const totalCount = summary.filter({ hasText: 'Dischi attivi' }).locator('strong');
 
-  await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: 'Dischi locali' })).toBeVisible();
-  await expect(page.getByRole('row', { name: /Disco di sistema/ })).toBeVisible();
+  await expect(app.getByRole('heading', { level: 1, name: 'Dischi locali' })).toBeVisible();
+  await expect(app.getByRole('row', { name: /Disco di sistema/ })).toBeVisible();
   await expect(nvmeCount).toHaveText('0');
   await expect(sataCount).toHaveText('1');
   await expect(totalCount).toHaveText('1');
-  await expect(page.getByTestId('disk_total')).toHaveText('Totale dischi 1');
+  await expect(app.getByTestId('disk_total')).toHaveText('Totale dischi 1');
 
-  await page.getByRole('button', { name: 'Dischi esterni' }).click();
+  await app.getByRole('button', { name: 'Dischi esterni' }).click();
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Dischi esterni' })).toBeVisible();
-  await expect(page.getByRole('row', { name: /Disco USB di backup/ })).toBeVisible();
+  await expect(app.getByRole('heading', { level: 1, name: 'Dischi esterni' })).toBeVisible();
+  await expect(app.getByRole('row', { name: /Disco USB di backup/ })).toBeVisible();
   await expect(summary).toHaveCount(0);
-  await expect(page.getByTestId('external_devices_menu')).toHaveCount(0);
-  await expect(page.getByTestId('external_total')).toHaveText('Totale dispositivi esterni 1');
-  await expect(page.getByRole('button', { name: 'Aggiorna' })).toBeVisible();
-  expect(requestedKinds).toEqual(['local', 'external']);
+  await expect(app.getByTestId('external_devices_menu')).toHaveCount(0);
+  await expect(app.getByTestId('external_total')).toHaveText('Totale dispositivi esterni 1');
+  await expect(app.getByRole('button', { name: 'Aggiorna' })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => (window as typeof window & { requestedKinds: string[] }).requestedKinds,
+    ),
+  ).toEqual(['local', 'external']);
 });
 
 test('hides refresh when no external disks are connected', async ({ page }) => {
-  await serveDiskInventory(page, false);
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Dischi esterni' }).click();
-  await expect(page.getByText('Nessun dispositivo rilevato in questa categoria.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Aggiorna' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Dischi locali' }).click();
-  await expect(page.getByRole('button', { name: 'Aggiorna' })).toBeVisible();
+  const app = await openDiskShell(page, { external: [] });
+  await app.getByRole('button', { name: 'Dischi esterni' }).click();
+  await expect(app.getByText('Nessun dispositivo rilevato in questa categoria.')).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Aggiorna' })).toHaveCount(0);
+  await app.getByRole('button', { name: 'Dischi locali' }).click();
+  await expect(app.getByRole('button', { name: 'Aggiorna' })).toBeVisible();
 });
 
 test('centers the inventory spinner while disks are being detected', async ({ page }) => {
-  let finish!: () => void;
-  const pending = new Promise<void>((resolve) => (finish = resolve));
-  await page.route('**/api/disks*', async (route) => {
-    await pending;
-    await route.fulfill({ json: [] });
-  });
-  await page.goto('/');
-  const status = page.getByRole('status');
+  const app = await openDiskShell(page, { local: [], hold: true });
+  const status = app.getByRole('status');
   await expect(status).toHaveText('Rilevamento dei dischi in corso');
   expect(
     await status
@@ -131,36 +138,41 @@ test('centers the inventory spinner while disks are being detected', async ({ pa
   expect(await status.evaluate((element) => getComputedStyle(element).justifyContent)).toBe(
     'center',
   );
-  finish();
+  await page.evaluate(() =>
+    (window as typeof window & { answerInventory: () => void }).answerInventory(),
+  );
   await expect(status).toHaveCount(0);
 });
 
-test('network disks stay hidden until a provider is configured', async ({ page }) => {
-  await serveDiskInventory(page);
-  await page.goto('/');
+test('the cloud section keeps its introduction and the network one its shares', async ({
+  page,
+}) => {
+  const app = await openDiskShell(page);
 
-  await page.getByRole('button', { name: 'Dischi di rete' }).click();
-
-  await expect(page.getByRole('heading', { level: 1, name: 'Dischi di rete' })).toBeVisible();
-  await expect(page.locator('.summary')).toHaveCount(0);
-  await expect(page.locator('.table_card')).toHaveCount(0);
-  const intro = page.getByTestId('network_intro');
+  await app.getByRole('button', { name: 'Dischi cloud' }).click();
+  await expect(app.getByRole('heading', { level: 1, name: 'Dischi cloud' })).toBeVisible();
+  await expect(app.locator('.summary')).toHaveCount(0);
+  await expect(app.locator('.table_card')).toHaveCount(0);
+  const intro = app.getByTestId('cloud_intro');
   await expect(intro).toContainText('Explorer');
   await expect(intro).toContainText('Backup');
   await expect(intro.getByRole('button', { name: 'Aggiungi' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Aggiorna' })).toHaveCount(0);
+
+  await app.getByRole('button', { name: 'Dischi di rete' }).click();
+  await expect(app.getByRole('heading', { level: 1, name: 'Dischi di rete' })).toBeVisible();
+  await expect(app.getByTestId('network_unavailable')).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Aggiorna' })).toHaveCount(0);
 });
 
 test('disk details show device metadata and can be closed', async ({ page }) => {
-  await serveDiskInventory(page);
-  await page.goto('/');
+  const app = await openDiskShell(page);
 
-  await page
+  await app
     .getByRole('row', { name: /Disco di sistema/ })
     .getByRole('button', { name: /Dettagli/ })
     .click();
 
-  const details = page.getByRole('dialog', { name: 'Dettagli' });
+  const details = app.getByRole('dialog', { name: 'Dettagli' });
   await expect(details).toBeVisible();
   await expect(details).toContainText('Disco di sistema');
   await expect(details).toContainText('/dev/sda1');
@@ -173,10 +185,9 @@ test('disk details show device metadata and can be closed', async ({ page }) => 
 });
 
 test('SVG icons keep their masks in the browser', async ({ page }) => {
-  await serveDiskInventory(page);
-  await page.goto('/');
+  const app = await openDiskShell(page);
 
-  const icons = page.locator('.app_icon');
+  const icons = app.locator('.app_icon');
   await expect(icons.first()).toBeVisible();
   const masks = await icons.evaluateAll((elements) =>
     elements.map((element) => getComputedStyle(element).maskImage),
@@ -186,21 +197,18 @@ test('SVG icons keep their masks in the browser', async ({ page }) => {
 });
 
 test('native disk dialogs contain focus and restore it after Escape', async ({ page }) => {
-  await page.route('**/api/disks*', (route) =>
-    route.fulfill({
-      json: [{ ...localDisk, id: 'sdb', initializable: true, filesystem: null }],
-    }),
-  );
-  await page.goto('/');
-  const trigger = page.getByTitle('Dettagli', { exact: true });
+  const app = await openDiskShell(page, {
+    local: [{ ...localDisk, id: 'sdb', initializable: true, filesystem: null }],
+  });
+  const trigger = app.getByTitle('Dettagli', { exact: true });
   await trigger.click();
-  const details = page.locator('dialog.details_backdrop');
+  const details = app.locator('dialog.details_backdrop');
   await expect(details).toBeVisible();
   expect(await details.evaluate((dialog) => dialog.matches(':modal'))).toBe(true);
   await expect(details.getByRole('button', { name: 'Chiudi' })).toBeFocused();
   await trigger.evaluate((button) => button.focus());
   await expect(details.getByRole('button', { name: 'Chiudi' })).toBeFocused();
-  // Tab may reach browser chrome (activeElement becomes body), but not the inert inventory.
+  // Tab may leave the frame (activeElement becomes body), but not reach the inert inventory.
   for (let index = 0; index < 6; index++) {
     await page.keyboard.press('Tab');
     expect(
@@ -213,7 +221,7 @@ test('native disk dialogs contain focus and restore it after Escape', async ({ p
   await details.getByRole('tab').nth(2).click();
   const initialize = details.locator('.danger_button');
   await initialize.click();
-  const confirmation = page.locator('dialog.confirmation_backdrop');
+  const confirmation = app.locator('dialog.confirmation_backdrop');
   await expect(confirmation).toBeVisible();
   expect(await confirmation.evaluate((dialog) => dialog.matches(':modal'))).toBe(true);
   expect(await confirmation.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(
@@ -229,37 +237,35 @@ test('native disk dialogs contain focus and restore it after Escape', async ({ p
 });
 
 test('external disks offer row icons and ask before ejecting', async ({ page }) => {
-  await serveDiskInventory(page);
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Dischi esterni' }).click();
-  const row = page.getByRole('row', { name: /Disco USB di backup/ });
+  const app = await openDiskShell(page);
+  await app.getByRole('button', { name: 'Dischi esterni' }).click();
+  const row = app.getByRole('row', { name: /Disco USB di backup/ });
   await expect(row.getByRole('button', { name: /Dettagli/ })).toHaveAttribute('title', 'Dettagli');
   await row.getByRole('button', { name: /Espelli/ }).click();
-  await expect(page.getByTestId('eject_confirmation')).toBeVisible();
-  await page.getByRole('button', { name: 'Annulla' }).click();
-  await expect(page.getByTestId('eject_confirmation')).toHaveCount(0);
+  await expect(app.getByTestId('eject_confirmation')).toBeVisible();
+  await app.getByRole('button', { name: 'Annulla' }).click();
+  await expect(app.getByTestId('eject_confirmation')).toHaveCount(0);
 });
 
 test('the disk sidebar stays visible while only the inventory content scrolls', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 300 });
-  await serveDiskInventory(page);
-  await page.goto('/');
-  await expect(page.getByRole('row', { name: /Disco di sistema/ })).toBeVisible();
-  const sidebar = page.getByTestId('app_sidebar');
+  const app = await openDiskShell(page);
+  await expect(app.getByRole('row', { name: /Disco di sistema/ })).toBeVisible();
+  const sidebar = app.getByTestId('app_sidebar');
   const before = await sidebar.boundingBox();
-  const scrollTop = await page.getByTestId('app_content').evaluate((element) => {
+  const scrollTop = await app.getByTestId('app_content').evaluate((element) => {
     element.scrollTop = 200;
     return element.scrollTop;
   });
   expect(scrollTop).toBeGreaterThan(0);
   expect((await sidebar.boundingBox())?.y).toBe(before?.y);
   expect(
-    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+    await app.locator('html').evaluate((html) => html.scrollHeight <= window.innerHeight),
   ).toBe(true);
   expect(
-    await page.getByTestId('app_content').evaluate((element) => ({
+    await app.getByTestId('app_content').evaluate((element) => ({
       // Chromium uses the shared WebKit scrollbar; a standard width overrides it.
       scrollbarWidth: getComputedStyle(element).scrollbarWidth,
       width: getComputedStyle(element, '::-webkit-scrollbar').width,
@@ -272,10 +278,7 @@ test('the disk sidebar stays visible while only the inventory content scrolls', 
 test('SMART failures have a titled alert and USB removal uses the common switch', async ({
   page,
 }) => {
-  await page.route('**/api/disks*', (route) =>
-    route.fulfill({ json: [{ ...externalDisk, uuid: 'usb-volume' }] }),
-  );
-  const app = await openDiskShell(page);
+  const app = await openDiskShell(page, { external: [{ ...externalDisk, uuid: 'usb-volume' }] });
   await app.getByRole('button', { name: 'Dischi esterni' }).click();
   await app.getByTitle('Dettagli', { exact: true }).click();
   const details = app.getByRole('dialog', { name: 'Dettagli' });
@@ -332,7 +335,6 @@ test('SMART failures have a titled alert and USB removal uses the common switch'
 test('ejection notifications include the visible USB name and a safe removal message', async ({
   page,
 }) => {
-  await serveDiskInventory(page);
   const app = await openDiskShell(page);
   await app.getByRole('button', { name: 'Dischi esterni' }).click();
   await app.getByTestId(`eject_${externalDisk.id}`).click();
@@ -347,4 +349,39 @@ test('ejection notifications include the visible USB name and a safe removal mes
         tone: 'success',
       }),
     ]);
+});
+
+test('a locked encrypted volume is unlocked from its actions', async ({ page }) => {
+  const app = await openDiskShell(page, {
+    encryption: true,
+    local: [
+      {
+        ...localDisk,
+        id: 'sdb1',
+        name: 'Archivio cifrato',
+        mount: null,
+        filesystem: 'crypto_LUKS',
+        uuid: 'luks-1',
+        identity: 'wwn/S1/1024',
+        encryption: 'locked',
+        keys: { password: true, automatic: false, recovery: false, held: true },
+      },
+    ],
+  });
+  const row = app.getByRole('row', { name: /Archivio cifrato/ });
+  await expect(row).toContainText('Cifrato');
+  await expect(row).toContainText('Bloccato');
+
+  await row.getByRole('button', { name: /Dettagli/ }).click();
+  const details = app.getByRole('dialog', { name: 'Dettagli' });
+  await details.getByRole('tab', { name: 'Azioni disco' }).click();
+  await expect(details.getByTestId('encryption_section')).toContainText('bloccato');
+  await details.getByTestId('unlock_password').fill('una password lunga');
+  await details.getByRole('button', { name: 'Sblocca' }).click();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as typeof window & { cryptRequests: unknown[] }).cryptRequests),
+    )
+    .toEqual([{ op: 'unlock', uuid: 'luks-1', password: 'una password lunga' }]);
 });

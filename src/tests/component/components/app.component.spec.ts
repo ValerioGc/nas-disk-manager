@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import App from '@/App.vue';
 import { messages } from '@/i18n';
 import type { Disk } from '@/types';
+import * as shell from '@/services/nasShell';
 
 const localDisk: Disk = {
   id: 'disk-1',
@@ -49,8 +50,8 @@ const externalDisk: Disk = {
   parent: 'sdb',
 };
 
-function response(body: unknown, status = 200) {
-  return { ok: status < 400, status, json: async () => body } as Response;
+function listing(data: unknown): shell.DiskAnswer {
+  return { success: true, data };
 }
 
 const mounted: Array<ReturnType<typeof mount>> = [];
@@ -75,12 +76,13 @@ afterEach(() => {
 
 describe('nas-disk-manager components', () => {
   it('renders the disk inventory, summary, details, and SVG icons', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(response([localDisk, unmountedDisk]));
-    vi.stubGlobal('fetch', fetchMock);
+    const read = vi
+      .spyOn(shell, 'readNasDisks')
+      .mockResolvedValue(listing([localDisk, unmountedDisk]));
     const wrapper = mountApp();
     await flushPromises();
 
-    expect(fetchMock).toHaveBeenCalledWith('api/disks?kind=local', expect.any(Object));
+    expect(read).toHaveBeenCalledWith('local');
     expect(wrapper.find('h1').text()).toBe(messages.en.kinds.local);
     expect(wrapper.find('.summary').text()).toContain(`${messages.en.sataDisks}2`);
     // Two disks, one of them mounted: one active, two in all.
@@ -116,7 +118,7 @@ describe('nas-disk-manager components', () => {
       model: null,
       size_bytes: 0,
     };
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([localDisk, missingMetadata])));
+    vi.spyOn(shell, 'readNasDisks').mockResolvedValue(listing([localDisk, missingMetadata]));
     const wrapper = mountApp();
     await flushPromises();
 
@@ -145,8 +147,9 @@ describe('nas-disk-manager components', () => {
       source: null,
       read_only: false,
       initializable: true,
+      identity: 'wwn/S1/1024',
     };
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([emptyDisk])));
+    vi.spyOn(shell, 'readNasDisks').mockResolvedValue(listing([emptyDisk]));
     const wrapper = mountApp();
     await flushPromises();
 
@@ -161,13 +164,9 @@ describe('nas-disk-manager components', () => {
   });
 
   it('switches categories and shows empty and server error states', async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url.endsWith('network')) {
-        return response({ error: 'Network unavailable' }, 503);
-      }
-      return response(url.endsWith('external') ? [externalDisk] : []);
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const read = vi
+      .spyOn(shell, 'readNasDisks')
+      .mockImplementation(async (kind) => listing(kind === 'external' ? [externalDisk] : []));
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('.empty').text()).toBe(messages.en.empty);
@@ -175,7 +174,7 @@ describe('nas-disk-manager components', () => {
     await wrapper.findAll('.nav_item')[1]!.trigger('click');
     await flushPromises();
     expect(wrapper.find('h1').text()).toBe(messages.en.kinds.external);
-    expect(fetchMock).toHaveBeenCalledWith('api/disks?kind=external', expect.any(Object));
+    expect(read).toHaveBeenCalledWith('external');
     expect(wrapper.find('.summary').exists()).toBe(false);
     expect(wrapper.find('[data-testid="external_devices_menu"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="external_total"]').text()).toBe('Total external devices 1');
@@ -191,26 +190,25 @@ describe('nas-disk-manager components', () => {
     expect(wrapper.find('.summary').exists()).toBe(false);
     expect(wrapper.find('.table_card').exists()).toBe(false);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(read).toHaveBeenCalledTimes(2);
   });
 
   it('disables refresh while loading and reports an invalid response', async () => {
-    let resolveFirst!: (value: Response) => void;
-    const fetchMock = vi
-      .fn()
+    let resolveFirst!: (value: shell.DiskAnswer) => void;
+    vi.spyOn(shell, 'readNasDisks')
       .mockImplementationOnce(
         () =>
-          new Promise<Response>((resolve) => {
+          new Promise<shell.DiskAnswer>((resolve) => {
             resolveFirst = resolve;
           }),
       )
-      .mockResolvedValueOnce(response({ unexpected: true }));
-    vi.stubGlobal('fetch', fetchMock);
+      .mockResolvedValueOnce(listing({ unexpected: true }));
     const wrapper = mountApp();
     await nextTick();
     expect(wrapper.find('.refresh').attributes('disabled')).toBeDefined();
     expect(wrapper.find('output').text()).toBe(messages.en.loading);
 
-    resolveFirst(response([localDisk]));
+    resolveFirst(listing([localDisk]));
     await flushPromises();
     expect(wrapper.find('.refresh').attributes('disabled')).toBeUndefined();
     await wrapper.find('.refresh').trigger('click');
@@ -222,7 +220,7 @@ describe('nas-disk-manager components', () => {
     const originalParent = Object.getOwnPropertyDescriptor(window, 'parent');
     const parent = { postMessage: vi.fn() };
     Object.defineProperty(window, 'parent', { configurable: true, value: parent });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([localDisk])));
+    vi.spyOn(shell, 'readNasDisks').mockResolvedValue(listing([localDisk]));
     const wrapper = mountApp();
     await flushPromises();
 

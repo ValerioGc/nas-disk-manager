@@ -4,6 +4,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { useDiskInventory } from '@/composables/useDiskInventory';
 import { messages, type Locale } from '@/i18n';
 import type { Disk } from '@/types';
+import * as shell from '@/services/nasShell';
 
 const disk: Disk = {
   id: 'disk-1',
@@ -24,8 +25,8 @@ const disk: Disk = {
   uuid: null,
 };
 
-function response(body: unknown, status = 200) {
-  return { ok: status < 400, status, json: async () => body } as Response;
+function answer(data: unknown) {
+  return { success: true, data };
 }
 
 let wrapper: VueWrapper | undefined;
@@ -57,73 +58,74 @@ afterEach(() => {
 
 describe('useDiskInventory', () => {
   it('opens on the section named by the kind query and ignores unknown ones', async () => {
-    const fetcher = vi.fn().mockResolvedValue(response([]));
-    vi.stubGlobal('fetch', fetcher);
-    window.history.replaceState({}, '', '/?kind=network');
-    expect(mountInventory().kind.value).toBe('network');
+    const read = vi.spyOn(shell, 'readNasDisks').mockResolvedValue(answer([]));
+    window.history.replaceState({}, '', '/?kind=external');
+    expect(mountInventory().kind.value).toBe('external');
     await flushPromises();
-    expect(fetcher).toHaveBeenCalledWith('api/disks?kind=network', expect.anything());
+    expect(read).toHaveBeenCalledWith('external');
     wrapper?.unmount();
     window.history.replaceState({}, '', '/?kind=floppy');
     expect(mountInventory().kind.value).toBe('local');
     window.history.replaceState({}, '', '/');
   });
 
-  it('uses the generic message for non-Error fetch failures', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('offline'));
+  it('asks the launcher nothing for the network section', async () => {
+    const read = vi.spyOn(shell, 'readNasDisks');
+    window.history.replaceState({}, '', '/?kind=network');
     const state = mountInventory();
     await flushPromises();
+    window.history.replaceState({}, '', '/');
 
+    expect(read).not.toHaveBeenCalled();
+    expect(state.disks.value).toEqual([]);
+    expect(state.loading.value).toBe(false);
+  });
+
+  it('shows why the launcher could not list the disks', async () => {
+    vi.spyOn(shell, 'readNasDisks')
+      .mockResolvedValueOnce({ success: false, error: 'Launcher unavailable' })
+      .mockResolvedValueOnce({ success: false })
+      .mockResolvedValueOnce(answer({ not: 'a list' }));
+    const state = mountInventory();
+    await flushPromises();
+    expect(state.error.value).toBe('Launcher unavailable');
+
+    await state.refresh();
     expect(state.error.value).toBe(messages.en.genericError);
+    await state.refresh();
+    expect(state.error.value).toBe(messages.en.invalidResponse);
     expect(state.loading.value).toBe(false);
   });
 
-  it('uses the response status if a failed response has no message', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({}, 503)));
-    const state = mountInventory();
-    await flushPromises();
-
-    expect(state.error.value).toBe('503');
-    expect(state.loading.value).toBe(false);
-  });
-
-  it('ignores an aborted request when a newer refresh replaces it', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockImplementationOnce(
-        (_url: string, options: RequestInit) =>
-          new Promise<Response>((_resolve, reject) => {
-            options.signal?.addEventListener('abort', () => {
-              reject(new DOMException('Aborted', 'AbortError'));
-            });
-          }),
-      )
-      .mockResolvedValueOnce(response([disk]));
-    vi.stubGlobal('fetch', fetchMock);
+  it('keeps only the answer of the latest request', async () => {
+    let first: (value: shell.DiskAnswer) => void = () => undefined;
+    vi.spyOn(shell, 'readNasDisks')
+      .mockReturnValueOnce(new Promise((resolve) => (first = resolve)))
+      .mockResolvedValueOnce(answer([disk]));
     const state = mountInventory();
     await nextTick();
 
     await state.refresh();
+    first(answer([]));
     await flushPromises();
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(state.error.value).toBe('');
     expect(state.disks.value).toEqual([disk]);
     expect(state.loading.value).toBe(false);
   });
+
   it('refreshes periodically, preserves existing selection, and stops polling on unmount', async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.fn().mockResolvedValue(response([disk]));
-    vi.stubGlobal('fetch', fetchMock);
+    const read = vi.spyOn(shell, 'readNasDisks').mockResolvedValue(answer([disk]));
     const state = mountInventory();
     await vi.advanceTimersByTimeAsync(0);
     state.selected.value = disk.id;
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledTimes(2);
     expect(state.selected.value).toBe(disk.id);
     wrapper?.unmount();
     wrapper = undefined;
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledTimes(2);
   });
 });

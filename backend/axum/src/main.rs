@@ -1,13 +1,12 @@
 mod inventory;
 
 use axum::{
-    extract::{Query, State},
+    extract::State,
     http::{header, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
-use serde::Deserialize;
 use serde_json::json;
 use std::{
     env,
@@ -21,49 +20,15 @@ struct AppState {
     ui_dir: PathBuf,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DiskQuery {
-    kind: Option<String>,
-}
-
-async fn disks(Query(query): Query<DiskQuery>) -> Response {
-    if query
-        .kind
-        .as_deref()
-        .is_some_and(|kind| !matches!(kind, "local" | "external" | "network"))
-    {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"Invalid disk type"})),
-        )
-            .into_response();
-    }
-    disk_response(
-        tokio::task::spawn_blocking(inventory::scan).await,
-        query.kind.as_deref(),
-    )
-}
-
 async fn network_disks() -> Response {
-    disk_response(
-        tokio::task::spawn_blocking(inventory::scan_network).await,
-        None,
-    )
+    disk_response(tokio::task::spawn_blocking(inventory::scan_network).await)
 }
 
 fn disk_response(
     result: Result<Result<Vec<inventory::Disk>, String>, tokio::task::JoinError>,
-    kind: Option<&str>,
 ) -> Response {
     match result {
-        Ok(Ok(disks)) => {
-            let filtered: Vec<_> = disks
-                .into_iter()
-                .filter(|disk| kind.is_none_or(|kind| disk.kind == kind))
-                .collect();
-            Json(filtered).into_response()
-        }
+        Ok(Ok(disks)) => Json(disks).into_response(),
         Ok(Err(error)) => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"error":error})),
@@ -218,7 +183,6 @@ async fn run(
     let listener = UnixListener::bind(&path)?;
     let app = Router::new()
         .route("/health", get(health))
-        .route("/api/disks", get(disks))
         .route("/api/network-disks", get(network_disks))
         .fallback(get(static_file))
         .with_state(state);

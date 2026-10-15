@@ -6,10 +6,11 @@ import { NasIcon } from '@valeriogc/nas-base-app';
 import external from '@/assets/icons/external.svg?url';
 import local from '@/assets/icons/local.svg?url';
 import network from '@/assets/icons/network.svg?url';
+import cloud from '@/assets/icons/cloud.svg?url';
 
 const { t, kind } = useDiskManager();
-const kinds: DiskKind[] = ['local', 'external', 'network'];
-const icons: Record<DiskKind, string> = { local, external, network };
+const kinds: DiskKind[] = ['local', 'external', 'network', 'cloud'];
+const icons: Record<DiskKind, string> = { local, external, network, cloud };
 
 </script>
 

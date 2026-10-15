@@ -1,4 +1,5 @@
 import { inject, provide, type InjectionKey } from 'vue';
+import { useDiskEncryption } from './useDiskEncryption';
 import { useDiskInventory } from './useDiskInventory';
 import { useExternalDisks } from './useExternalDisks';
 import { useNasLauncherContext } from './useNasLauncherContext';
@@ -7,7 +8,8 @@ function createDiskManager() {
   const shell = useNasLauncherContext();
   const inventory = useDiskInventory(shell.locale, shell.t);
   const external = useExternalDisks(inventory.kind, inventory.disks, shell.t, inventory.refresh);
-  return { ...shell, ...inventory, ...external };
+  const encryption = useDiskEncryption(shell.t, inventory.refresh);
+  return { ...shell, ...inventory, ...external, ...encryption };
 }
 
 type DiskManager = ReturnType<typeof createDiskManager>;

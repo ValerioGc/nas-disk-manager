@@ -1,13 +1,21 @@
 import { onMounted, onUnmounted, ref, watch, type ComputedRef, type Ref } from 'vue';
 import type { Locale, Translations } from '@/i18n';
 import type { Disk, DiskKind } from '@/types';
+import { readNasDisks, type DiskAnswer } from '@/services/nasShell';
 
-const kinds: DiskKind[] = ['local', 'external', 'network'];
+const kinds: DiskKind[] = ['local', 'external', 'network', 'cloud'];
 
 /** The section another application asked for with `?kind=`, the local disks otherwise. */
 function requestedKind(): DiskKind {
   const requested = new URL(window.location.href).searchParams.get('kind');
   return kinds.find((kind) => kind === requested) ?? 'local';
+}
+
+/** The disks of a section: the network and cloud sections list theirs on their own. */
+function listed(kind: DiskKind): Promise<DiskAnswer> {
+  return kind === 'local' || kind === 'external'
+    ? readNasDisks(kind)
+    : Promise.resolve({ success: true, data: [] });
 }
 
 export function useDiskInventory(locale: Ref<Locale>, t: ComputedRef<Translations>) {
@@ -18,39 +26,28 @@ export function useDiskInventory(locale: Ref<Locale>, t: ComputedRef<Translation
   const error = ref('');
   const updatedAt = ref('');
   let timer: number | undefined;
-  let controller: AbortController | undefined;
+  // An answer of the shell cannot be called off: only the latest request counts.
+  let latest = 0;
 
   async function refresh() {
-    controller?.abort();
-    const requestController = new AbortController();
-    controller = requestController;
+    const request = ++latest;
     loading.value = true;
     error.value = '';
-    try {
-      const response = await fetch(`api/disks?kind=${kind.value}`, {
-        signal: requestController.signal,
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || `${response.status}`);
-      }
-      if (!Array.isArray(data)) {
-        throw new TypeError(t.value.invalidResponse);
-      }
-      disks.value = data as Disk[];
+    const result = await listed(kind.value);
+    if (request !== latest) {
+      return;
+    }
+    loading.value = false;
+    if (!result.success) {
+      error.value = result.error || t.value.genericError;
+    } else if (Array.isArray(result.data)) {
+      disks.value = result.data as Disk[];
       if (!disks.value.some((disk) => disk.id === selected.value)) {
         selected.value = null;
       }
       updatedAt.value = new Date().toLocaleTimeString(locale.value);
-    } catch (cause) {
-      if (cause instanceof DOMException && cause.name === 'AbortError') {
-        return;
-      }
-      error.value = cause instanceof Error ? cause.message : t.value.genericError;
-    } finally {
-      if (controller === requestController) {
-        loading.value = false;
-      }
+    } else {
+      error.value = t.value.invalidResponse;
     }
   }
 
@@ -66,7 +63,7 @@ export function useDiskInventory(locale: Ref<Locale>, t: ComputedRef<Translation
   });
 
   onUnmounted(() => {
-    controller?.abort();
+    latest += 1;
     if (timer) {
       window.clearInterval(timer);
     }

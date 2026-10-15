@@ -34,3 +34,82 @@
   white-space: nowrap;
   border: 0;
 }
+
+.action_section + .action_section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--table-border);
+}
+
+.action_section h3 {
+  margin: 0 0 8px;
+}
+
+.action_section p {
+  color: #718396;
+}
+
+// The actions of a disk, in its details and in the components of the details.
+.action_section label,
+.confirmation_modal label {
+  display: grid;
+  gap: 7px;
+  margin: 16px 0;
+}
+
+input {
+  border: 1px solid var(--table-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--app-bg);
+  color: var(--heading-color);
+  font: inherit;
+}
+
+.danger_button,
+.secondary_button {
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+}
+
+.danger_button {
+  color: #b42318;
+}
+
+.secondary_button {
+  color: var(--heading-color);
+}
+
+button:disabled,
+button[aria-disabled='true'] {
+  opacity: 0.45;
+}
+
+button[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+.action_section .app_switch {
+  margin: 16px 0 4px;
+}
+
+.action_section .hint {
+  margin: 0 0 16px;
+  font-size: 12px;
+}
+
+.warning,
+.operation_error {
+  color: #b42318 !important;
+}
+
+.action_section label.check,
+.confirmation_modal label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

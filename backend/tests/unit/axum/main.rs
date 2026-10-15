@@ -1,10 +1,10 @@
 use super::{
-    disk_response, disks, health, inventory::Disk, listen_path, network_disks, prepare_socket,
-    resolve_ui_dir, run, static_file, AppState, DiskQuery,
+    disk_response, health, inventory::Disk, listen_path, network_disks, prepare_socket,
+    resolve_ui_dir, run, static_file, AppState,
 };
 use axum::{
     body::to_bytes,
-    extract::{Query, State},
+    extract::State,
     http::{header, StatusCode, Uri},
     response::IntoResponse,
 };
@@ -68,7 +68,7 @@ async fn serves_health_and_static_files_and_blocks_api_fallback() {
         "nas-disk-manager"
     );
 
-    let api = static_file(state.clone(), Uri::from_static("/api/disks")).await;
+    let api = static_file(state.clone(), Uri::from_static("/api/network-disks")).await;
     assert_eq!(api.status(), StatusCode::NOT_FOUND);
     let traversal = static_file(state.clone(), Uri::from_static("/../secret")).await;
     assert_eq!(traversal.status(), StatusCode::BAD_REQUEST);
@@ -103,68 +103,32 @@ async fn static_file_uses_content_types_for_supported_extensions() {
 }
 
 #[tokio::test]
-async fn rejects_invalid_disk_kind() {
-    let invalid = disks(Query(DiskQuery {
-        kind: Some("invalid".to_owned()),
-    }))
-    .await;
-    assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn filters_scanned_disks_by_kind() {
-    let fixtures: Vec<_> = ["local", "external", "network"]
-        .into_iter()
-        .map(|kind| Disk {
-            id: kind.to_owned(),
-            name: kind.to_owned(),
-            device: None,
-            kind,
-            disk_type: "disk".to_owned(),
-            size_bytes: 1024,
-            mount: None,
-            filesystem: None,
-            model: None,
-            transport: None,
-            removable: false,
-            read_only: false,
-            initializable: false,
-            parent: None,
-            source: None,
-            uuid: None,
-        })
-        .collect();
-
-    for kind in [None, Some("local"), Some("external"), Some("network")] {
-        let response = disk_response(Ok(Ok(fixtures.clone())), kind);
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let disks: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
-        let ids: Vec<_> = disks
-            .iter()
-            .map(|disk| disk["id"].as_str().unwrap())
-            .collect();
-        let expected = match kind {
-            Some(kind) => vec![kind],
-            None => vec!["local", "external", "network"],
-        };
-        assert_eq!(ids, expected);
-    }
-
-    let empty = disk_response(Ok(Ok(Vec::new())), Some("local"));
-    assert_eq!(empty.status(), StatusCode::OK);
-    assert_eq!(to_bytes(empty.into_body(), usize::MAX).await.unwrap(), "[]");
+async fn answers_the_network_shares_it_scanned() {
+    let share = Disk {
+        id: "network:/mnt/share".to_owned(),
+        name: "share".to_owned(),
+        kind: "network",
+        mount: Some("/mnt/share".to_owned()),
+        filesystem: Some("cifs".to_owned()),
+        read_only: false,
+        source: Some("//nas/share".to_owned()),
+    };
+    let response = disk_response(Ok(Ok(vec![share])));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let disks: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(disks[0]["source"], "//nas/share");
 }
 
 #[tokio::test]
 async fn reports_disk_scan_and_worker_failures() {
-    let scan_error = disk_response(Ok(Err("lsblk failed".to_owned())), None);
+    let scan_error = disk_response(Ok(Err("mountinfo unreadable".to_owned())));
     assert_eq!(scan_error.status(), StatusCode::SERVICE_UNAVAILABLE);
 
     let worker_error = tokio::task::spawn_blocking(|| panic!("simulated worker failure"))
         .await
         .unwrap_err();
-    let response = disk_response(Err(worker_error), None);
+    let response = disk_response(Err(worker_error));
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
@@ -234,19 +198,11 @@ fn parses_socket_arguments_and_environment_defaults() {
 }
 
 #[tokio::test]
-async fn reads_the_disks_of_this_machine_or_says_why_not() {
-    for response in [
-        disks(Query(DiskQuery {
-            kind: Some("local".to_owned()),
-        }))
-        .await,
-        network_disks().await,
-    ] {
-        assert!(matches!(
-            response.status(),
-            StatusCode::OK | StatusCode::SERVICE_UNAVAILABLE
-        ));
-    }
+async fn reads_the_network_shares_of_this_machine_or_says_why_not() {
+    assert!(matches!(
+        network_disks().await.status(),
+        StatusCode::OK | StatusCode::SERVICE_UNAVAILABLE
+    ));
 }
 
 #[tokio::test]

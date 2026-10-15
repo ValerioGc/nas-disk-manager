@@ -3,7 +3,9 @@
 import { computed, ref, watch } from 'vue';
 import { NasIcon, NasLoading, NasSwitch, vNasModal as vModal } from '@valeriogc/nas-base-app';
 import { useDiskManager } from '@/composables/diskManagerContext';
+import { wholeDiskOf } from '@/composables/useDiskEncryption';
 import { formatDiskSize } from '@/utils/formatDiskSize';
+import EncryptionActions from '@/components/sections/EncryptionActions.vue';
 import closeIcon from '@/assets/icons/close.svg?url';
 import detailsIcon from '@/assets/icons/details.svg?url';
 import {
@@ -14,13 +16,34 @@ import {
 } from '@/services/nasShell';
 
 type DetailTab = 'info' | 'smart' | 'actions';
-const { t, locale, disks, selected, refresh, ejecting, isLocked, setLock, eject } =
-  useDiskManager();
+/** Erasing an empty disk, or a data disk with volumes on it. */
+type EraseMode = 'initialize' | 'format';
+const MIN_PASSWORD = 8;
+const {
+  t,
+  locale,
+  disks,
+  selected,
+  refresh,
+  ejecting,
+  isLocked,
+  setLock,
+  eject,
+  available,
+  secure,
+  crypt,
+  cryptError,
+} = useDiskManager();
 const disk = computed(() => disks.value.find((item) => item.id === selected.value));
 const activeTab = ref<DetailTab>('info');
 const confirming = ref(false);
+const eraseMode = ref<EraseMode>('initialize');
 const confirmation = ref('');
 const label = ref('');
+const encrypt = ref(false);
+const automatic = ref(true);
+const erasePassword = ref('');
+const eraseRepeat = ref('');
 const submitting = ref(false);
 const renaming = ref(false);
 const renameLabel = ref('');
@@ -36,6 +59,38 @@ const canRename = computed(
     ['ext2', 'ext3', 'ext4'].includes(disk.value?.filesystem ?? ''),
 );
 const busy = computed(() => submitting.value || renaming.value || ejecting.value !== null);
+/** The whole disk a format erases: the disk of the volume shown. */
+const eraseTarget = computed(() =>
+  disk.value && eraseMode.value === 'format'
+    ? wholeDiskOf(disk.value, disks.value)
+    : disk.value?.id,
+);
+const canFormat = computed(
+  () =>
+    available.value &&
+    disk.value?.kind === 'local' &&
+    !disk.value.system_disk &&
+    !disk.value.read_only &&
+    !disk.value.initializable &&
+    Boolean(disk.value.identity),
+);
+/** An encrypted volume opens with the password typed, the automatic key, or both. */
+const keysReady = computed(() => {
+  if (!encrypt.value) {
+    return true;
+  }
+  const typed = erasePassword.value.length > 0;
+  return typed
+    ? erasePassword.value.length >= MIN_PASSWORD && erasePassword.value === eraseRepeat.value
+    : automatic.value;
+});
+const eraseReady = computed(
+  () =>
+    !submitting.value &&
+    confirmation.value === eraseTarget.value &&
+    Boolean(label.value.trim()) &&
+    keysReady.value,
+);
 const external = computed(() => disk.value?.kind === 'external');
 const locked = computed(() => Boolean(disk.value && isLocked(disk.value)));
 
@@ -93,31 +148,52 @@ async function selectTab(tab: DetailTab) {
   }
   smartLoading.value = false;
 }
-function openInitialization() {
+function openErase(mode: EraseMode) {
   const current = disk.value;
-  if (!current?.initializable) {
+  if (!current || (mode === 'initialize' ? !current.initializable : !canFormat.value)) {
     return;
   }
-  label.value = `Data-${current.id.replace(/[^a-z0-9]+/gi, '-')}`.slice(0, 16);
+  eraseMode.value = mode;
+  const target = mode === 'format' ? wholeDiskOf(current, disks.value) : current.id;
+  label.value = `Data-${target.replace(/[^a-z0-9]+/gi, '-')}`.slice(0, 16);
   confirmation.value = '';
+  encrypt.value = false;
+  automatic.value = true;
+  erasePassword.value = '';
+  eraseRepeat.value = '';
   operationError.value = '';
   confirming.value = true;
 }
-async function initialize() {
+/** A disk erased without encryption the way it always was; a format or an encrypted volume by
+ * the encryption of the launcher. */
+async function erase() {
   const current = disk.value;
-  if (!current || confirmation.value !== current.id || !label.value.trim()) {
+  const target = eraseTarget.value;
+  if (!current?.identity || !target || !eraseReady.value) {
     return;
   }
   submitting.value = true;
   operationError.value = '';
-  const result = await initializeNasDisk(current.id, label.value.trim());
-  if (!result.success) {
-    submitting.value = false;
-    operationError.value = result.error || t.value.initializeFailed;
+  const plain = eraseMode.value === 'initialize' && !encrypt.value;
+  const result = plain
+    ? await initializeNasDisk(target, label.value.trim(), current.identity)
+    : await crypt({
+        op: 'format',
+        device: target,
+        identity: current.identity,
+        label: label.value.trim(),
+        encrypt: encrypt.value,
+        automatic: encrypt.value && automatic.value,
+        password: encrypt.value && erasePassword.value ? erasePassword.value : undefined,
+      });
+  submitting.value = false;
+  if (!result?.success) {
+    operationError.value = result?.error || cryptError.value || t.value.initializeFailed;
     return;
   }
-  await refresh();
-  submitting.value = false;
+  if (plain) {
+    await refresh();
+  }
   confirming.value = false;
   notifyNasShell(t.value.initializeStarted, t.value.initializeStartedMessage, 'success');
 }
@@ -268,8 +344,16 @@ function closeInitialization() {
         <div v-if="disk.initializable" class="action_section danger_section">
           <h3>{{ t.initialize }}</h3>
           <p class="warning">{{ t.initializeWarning }}</p>
-          <button type="button" class="danger_button" @click="openInitialization">
+          <button type="button" class="danger_button" @click="openErase('initialize')">
             {{ t.initialize }}
+          </button>
+        </div>
+        <EncryptionActions v-if="available && disk.encryption && disk.uuid" :disk="disk" />
+        <div v-if="canFormat" class="action_section danger_section" data-testid="format_section">
+          <h3>{{ t.format }}</h3>
+          <p class="warning">{{ t.formatWarning }}</p>
+          <button type="button" class="danger_button" @click="openErase('format')">
+            {{ t.format }}
           </button>
         </div>
         <div v-if="external" class="action_section" data-testid="removal_section">
@@ -297,7 +381,17 @@ function closeInitialization() {
             {{ ejecting === disk.id ? t.ejecting : t.eject }}
           </button>
         </div>
-        <p v-if="!canRename && !disk.initializable && !external">{{ t.actionsUnavailable }}</p>
+        <p
+          v-if="
+            !canRename &&
+            !disk.initializable &&
+            !external &&
+            !canFormat &&
+            !(available && disk.encryption)
+          "
+        >
+          {{ t.actionsUnavailable }}
+        </p>
       </div>
     </section>
   </dialog>
@@ -306,23 +400,59 @@ function closeInitialization() {
     v-if="confirming && disk"
     v-modal
     class="modal_backdrop confirmation_backdrop"
-    :aria-label="t.initializeTitle"
+    :aria-label="eraseMode === 'format' ? t.formatTitle : t.initializeTitle"
     @click.self="closeInitialization"
     @cancel.prevent="closeInitialization"
   >
     <section class="modal confirmation_modal surface_card">
-      <h2>{{ t.initializeTitle }}</h2>
-      <p class="warning">{{ t.initializeWarning }}</p>
+      <h2>{{ eraseMode === 'format' ? t.formatTitle : t.initializeTitle }}</h2>
+      <p class="warning">{{ eraseMode === 'format' ? t.formatWarning : t.initializeWarning }}</p>
       <p>
-        <strong>{{ t.initializeDevice }}:</strong> /dev/{{ disk.id }}
+        <strong>{{ t.initializeDevice }}:</strong> /dev/{{ eraseTarget }}
       </p>
       <label
         ><span>{{ t.volumeLabel }}</span
         ><input v-model="label" maxlength="16" autocomplete="off" :disabled="submitting"
       /></label>
+      <template v-if="available">
+        <label class="check"
+          ><input
+            v-model="encrypt"
+            type="checkbox"
+            :disabled="submitting"
+            data-testid="encrypt"
+          />{{ t.encryptVolume }}</label
+        >
+        <template v-if="encrypt">
+          <label class="check"
+            ><input v-model="automatic" type="checkbox" :disabled="submitting" />{{
+              t.automaticUnlock
+            }}</label
+          >
+          <p v-if="!secure" class="hint">{{ t.encryptionNeedsHttps }}</p>
+          <label
+            ><span>{{ automatic ? t.setPasswordOptional : t.setPassword }}</span
+            ><input
+              v-model="erasePassword"
+              type="password"
+              autocomplete="new-password"
+              :disabled="submitting || !secure"
+              data-testid="erase_password"
+          /></label>
+          <label v-if="erasePassword"
+            ><span>{{ t.repeatPassword }}</span
+            ><input
+              v-model="eraseRepeat"
+              type="password"
+              autocomplete="new-password"
+              :disabled="submitting"
+              data-testid="erase_repeat"
+          /></label>
+        </template>
+      </template>
       <label
         ><span
-          >{{ t.confirmDevice }}: <strong>{{ disk.id }}</strong></span
+          >{{ t.confirmDevice }}: <strong>{{ eraseTarget }}</strong></span
         ><input v-model="confirmation" autocomplete="off" :disabled="submitting"
       /></label>
       <p v-if="operationError" class="operation_error" role="alert">{{ operationError }}</p>
@@ -335,12 +465,7 @@ function closeInitialization() {
         >
           {{ t.cancel }}
         </button>
-        <button
-          type="button"
-          class="danger_button"
-          :disabled="submitting || confirmation !== disk.id || !label.trim()"
-          @click="initialize"
-        >
+        <button type="button" class="danger_button" :disabled="!eraseReady" @click="erase">
           {{ submitting ? t.initializing : t.initializeConfirm }}
         </button>
       </div>
@@ -502,77 +627,6 @@ dd {
   margin: 5px 0 0;
   overflow-wrap: anywhere;
   font-size: 13px;
-}
-
-.action_section + .action_section {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid var(--table-border);
-}
-
-.action_section h3 {
-  margin: 0 0 8px;
-}
-
-.action_section p {
-  color: #718396;
-}
-
-.action_section label,
-.confirmation_modal label {
-  display: grid;
-  gap: 7px;
-  margin: 16px 0;
-}
-
-input {
-  border: 1px solid var(--table-border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: var(--app-bg);
-  color: var(--heading-color);
-  font: inherit;
-}
-
-.danger_button,
-.secondary_button {
-  border: 1px solid currentColor;
-  border-radius: 8px;
-  padding: 10px 16px;
-  background: transparent;
-  font: inherit;
-  font-weight: 650;
-}
-
-.danger_button {
-  color: #b42318;
-}
-
-.secondary_button {
-  color: var(--heading-color);
-}
-
-button:disabled,
-button[aria-disabled='true'] {
-  opacity: 0.45;
-}
-
-button[aria-disabled='true'] {
-  cursor: not-allowed;
-}
-
-.action_section .app_switch {
-  margin: 16px 0 4px;
-}
-
-.action_section .hint {
-  margin: 0 0 16px;
-  font-size: 12px;
-}
-
-.warning,
-.operation_error {
-  color: #b42318 !important;
 }
 
 .confirmation_modal h2 {

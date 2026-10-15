@@ -68,12 +68,18 @@ async function confirmEject() {
               <span class="disk_name">{{ disk.name }}</span>
               <small>{{ disk.device || disk.source || disk.id }}</small>
             </td>
-            <td>{{ disk.filesystem || disk.disk_type }}</td>
+            <td>{{ disk.encryption ? t.encryptedType : disk.filesystem || disk.disk_type }}</td>
             <td>{{ formatDiskSize(disk.size_bytes, locale) }}</td>
             <td>
               <!-- Where it is mounted is in the details: here only whether it is. -->
               <span :class="['status', { off: !disk.mount }]">
-                {{ disk.mount ? t.active : t.unmounted }}
+                {{
+                  disk.encryption === 'locked'
+                    ? t.lockedStatus
+                    : disk.mount
+                      ? t.active
+                      : t.unmounted
+                }}
               </span>
             </td>
             <td>

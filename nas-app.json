@@ -23,6 +23,7 @@
     }
   ],
   "permissions": {
-    "paths": ["/proc", "/sys", "/run/udev"]
+    "paths": ["/proc"],
+    "packages": ["cifs-utils"]
   }
 }

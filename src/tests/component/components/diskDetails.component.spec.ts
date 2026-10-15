@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import App from '@/App.vue';
 import { messages } from '@/i18n';
@@ -24,7 +24,7 @@ const disk: Disk = {
   uuid: null,
 };
 let wrapper: VueWrapper;
-let fetchMock: ReturnType<typeof vi.fn>;
+let readDisks: MockInstance<typeof shell.readNasDisks>;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -34,7 +34,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 async function openDetails(overrides: Partial<Disk> = {}) {
-  fetchMock.mockResolvedValue({ ok: true, json: async () => [{ ...disk, ...overrides }] });
+  readDisks.mockResolvedValue({ success: true, data: [{ ...disk, ...overrides }] });
   wrapper = mount(App);
   await flushPromises();
   await wrapper.get('[title="Details"]').trigger('click');
@@ -43,15 +43,20 @@ async function tab(index: number) {
   await wrapper.findAll('[role="tab"]')[index]!.trigger('click');
 }
 async function openInitialization() {
-  await openDetails({ id: 'sdb', parent: null, filesystem: null, initializable: true });
+  await openDetails({
+    id: 'sdb',
+    parent: null,
+    filesystem: null,
+    initializable: true,
+    identity: 'wwn/S1/1024',
+  });
   await tab(2);
   await wrapper.get('.danger_button').trigger('click');
 }
 
 beforeEach(() => {
   window.history.replaceState({}, '', '/?lang=en');
-  fetchMock = vi.fn();
-  vi.stubGlobal('fetch', fetchMock);
+  readDisks = vi.spyOn(shell, 'readNasDisks');
   vi.spyOn(shell, 'notifyNasShell').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -151,7 +156,7 @@ describe('disk details operations', () => {
     expect(wrapper.find('.detail_card').exists()).toBe(true);
     pending.resolve({ success: true });
     await flushPromises();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(readDisks).toHaveBeenCalledTimes(2);
     expect(shell.notifyNasShell).toHaveBeenCalledWith(
       messages.en.renameSucceeded,
       messages.en.renameSucceededMessage,
@@ -172,7 +177,7 @@ describe('disk details operations', () => {
       await flushPromises();
       expect(wrapper.get('[role="alert"]').text()).toBe(error ?? messages.en.renameFailed);
       expect(wrapper.get('form button').attributes('disabled')).toBeUndefined();
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(readDisks).toHaveBeenCalledTimes(1);
       expect(shell.notifyNasShell).not.toHaveBeenCalled();
     },
   );
@@ -218,7 +223,7 @@ describe('disk details operations', () => {
     await inputs[0]!.setValue(' Data ');
     await inputs[1]!.setValue('sdb');
     await wrapper.get('.confirmation_modal .danger_button').trigger('click');
-    expect(initialize).toHaveBeenCalledExactlyOnceWith('sdb', 'Data');
+    expect(initialize).toHaveBeenCalledExactlyOnceWith('sdb', 'Data', 'wwn/S1/1024');
     expect(wrapper.get('.confirmation_modal .danger_button').text()).toBe(messages.en.initializing);
     expect(
       wrapper.get('.confirmation_modal .secondary_button').attributes('disabled'),
@@ -231,7 +236,7 @@ describe('disk details operations', () => {
     expect(wrapper.find('.detail_card').exists()).toBe(true);
     pending.resolve({ success: true });
     await flushPromises();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(readDisks).toHaveBeenCalledTimes(2);
     expect(wrapper.find('.confirmation_modal').exists()).toBe(false);
     expect(shell.notifyNasShell).toHaveBeenCalledWith(
       messages.en.initializeStarted,
@@ -254,7 +259,7 @@ describe('disk details operations', () => {
       expect(
         wrapper.get('.confirmation_modal .danger_button').attributes('disabled'),
       ).toBeUndefined();
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(readDisks).toHaveBeenCalledTimes(1);
       expect(shell.notifyNasShell).not.toHaveBeenCalled();
     },
   );
@@ -281,7 +286,7 @@ describe('external disks', () => {
 
   async function showExternal(locks: string[] = []) {
     vi.spyOn(shell, 'readNasDiskLocks').mockResolvedValue({ success: true, data: locks });
-    fetchMock.mockResolvedValue({ ok: true, json: async () => [{ ...disk, ...usb }] });
+    readDisks.mockResolvedValue({ success: true, data: [{ ...disk, ...usb }] });
     wrapper = mount(App);
     await flushPromises();
     await wrapper.findAll('.nav_item')[1]!.trigger('click');
