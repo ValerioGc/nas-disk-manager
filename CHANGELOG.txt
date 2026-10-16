@@ -2,6 +2,19 @@
 
 All notable changes to nas-disk-manager are documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- The fields of the forms have a `name`, the buttons that save say "Salva" and sit at the right
+  end of the details, Cancel before them.
+- The form of a network disk keeps its buttons at its left, and its switches show the label at
+  the right of the switch instead of below it.
+- The button that adds a network disk sits at the right end of the card, level with its title.
+- The information of a disk opens with a summary: the icon of its kind, its capacity and badges for
+  its state, read only or read and write, encryption and system disk. The other values sit in a
+  grid of tiles, the connection written as NVMe, SATA or USB, the UUID when the volume has one.
+
 ## [0.1.30]
 
 ### Changed

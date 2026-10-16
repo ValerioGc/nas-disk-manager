@@ -103,7 +103,7 @@ describe('nas-disk-manager components', () => {
     await wrapper.findAll('[title="Details"]')[1]!.trigger('click');
     expect(wrapper.find('.detail_card').text()).toContain('Backup drive');
     expect(wrapper.find('.detail_card').text()).toContain('/backup');
-    expect(wrapper.find('.detail_card').text()).toContain(messages.en.yes);
+    expect(wrapper.find('.detail_card').text()).toContain(messages.en.readOnlyLabel);
     await wrapper.find('.close').trigger('click');
     expect(wrapper.find('.detail_card').exists()).toBe(false);
   });
@@ -129,13 +129,43 @@ describe('nas-disk-manager components', () => {
     expect(mountedDetails).toContain('ext4');
     expect(mountedDetails).toContain('SATA');
     expect(mountedDetails).toContain('Sample model');
-    expect(mountedDetails).toContain(messages.en.no);
+    expect(mountedDetails).toContain(messages.en.readWrite);
+    expect(mountedDetails).toContain(messages.en.active);
 
     await wrapper.findAll('[title="Details"]')[1]!.trigger('click');
     expect(wrapper.find('.detail_card').text()).toContain('Unidentified drive');
     // A value the drive does not report is shown as a dash, not left blank.
     expect(wrapper.findAll('.detail_card dd').map((value) => value.text())).toContain('-');
     expect(wrapper.findAll('tbody tr')[1]!.text()).toContain('disk-3');
+  });
+
+  it('sums up a disk in its details with its state, connection and identity', async () => {
+    const encrypted: Disk = {
+      ...localDisk,
+      transport: 'nvme',
+      uuid: '1234-abcd',
+      read_only: true,
+      system_disk: true,
+      encryption: 'locked',
+    };
+    vi.spyOn(shell, 'readNasDisks').mockResolvedValue(listing([encrypted]));
+    const wrapper = mountApp();
+    await flushPromises();
+
+    await wrapper.get('[title="Details"]').trigger('click');
+    const summary = wrapper.get('[data-testid="disk_summary"]').text();
+    for (const text of [
+      '500 GB',
+      messages.en.lockedStatus,
+      messages.en.readOnlyLabel,
+      messages.en.encryptedType,
+      messages.en.systemDisk,
+    ]) {
+      expect(summary).toContain(text);
+    }
+    const details = wrapper.get('.detail_card').text();
+    expect(details).toContain('NVMe');
+    expect(details).toContain('1234-abcd');
   });
 
   it('requires the device name before enabling destructive initialization', async () => {

@@ -49,6 +49,13 @@
   color: #718396;
 }
 
+// The button that saves a form of the details sits at its right end.
+.action_section form > button[type='submit'],
+form.action_section > button[type='submit'] {
+  display: flex;
+  margin-left: auto;
+}
+
 // The actions of a disk, in its details and in the components of the details.
 .action_section label,
 .confirmation_modal label {
@@ -94,6 +101,7 @@ button[aria-disabled='true'] {
 }
 
 .action_section .app_switch {
+  display: inline-flex;
   margin: 16px 0 4px;
 }
 

@@ -6,8 +6,13 @@ import { useDiskManager } from '@/composables/diskManagerContext';
 import { wholeDiskOf } from '@/composables/useDiskEncryption';
 import { formatDiskSize } from '@/utils/formatDiskSize';
 import EncryptionActions from '@/components/sections/EncryptionActions.vue';
+import type { DiskKind } from '@/types';
 import closeIcon from '@/assets/icons/close.svg?url';
 import detailsIcon from '@/assets/icons/details.svg?url';
+import cloudIcon from '@/assets/icons/cloud.svg?url';
+import externalIcon from '@/assets/icons/external.svg?url';
+import localIcon from '@/assets/icons/local.svg?url';
+import networkIcon from '@/assets/icons/network.svg?url';
 import {
   initializeNasDisk,
   notifyNasShell,
@@ -16,6 +21,14 @@ import {
 } from '@/services/nasShell';
 
 type DetailTab = 'info' | 'smart' | 'actions';
+const KIND_ICONS: Record<DiskKind, string> = {
+  local: localIcon,
+  external: externalIcon,
+  network: networkIcon,
+  cloud: cloudIcon,
+};
+/** How the connections reported by lsblk are written. */
+const TRANSPORTS: Record<string, string> = { nvme: 'NVMe', sata: 'SATA', usb: 'USB' };
 /** Erasing an empty disk, or a data disk with volumes on it. */
 type EraseMode = 'initialize' | 'format';
 const MIN_PASSWORD = 8;
@@ -52,6 +65,16 @@ const renameError = ref('');
 const smartLoading = ref(false);
 const smartError = ref('');
 const smartData = ref<Record<string, unknown> | null>(null);
+const mountState = computed(() => {
+  if (disk.value?.encryption === 'locked') {
+    return t.value.lockedStatus;
+  }
+  return disk.value?.mount ? t.value.active : t.value.unmounted;
+});
+const transport = computed(() => {
+  const name = disk.value?.transport;
+  return name ? (TRANSPORTS[name.toLowerCase()] ?? name.toUpperCase()) : '-';
+});
 const canRename = computed(
   () =>
     Boolean(disk.value?.device) &&
@@ -259,18 +282,27 @@ function closeInitialization() {
         </button>
       </div>
       <div v-if="activeTab === 'info'" class="tab_panel" role="tabpanel">
-        <dl>
+        <div class="info_summary" data-testid="disk_summary">
+          <span class="info_icon"><NasIcon :svg="KIND_ICONS[disk.kind]" /></span>
+          <div class="info_size">
+            <strong>{{ formatDiskSize(disk.size_bytes, locale) }}</strong>
+            <span>{{ t.size }}</span>
+          </div>
+          <ul class="info_badges">
+            <li :class="['status', { off: !disk.mount }]">{{ mountState }}</li>
+            <li class="info_badge">{{ disk.read_only ? t.readOnlyLabel : t.readWrite }}</li>
+            <li v-if="disk.encryption" class="info_badge">{{ t.encryptedType }}</li>
+            <li v-if="disk.system_disk" class="info_badge">{{ t.systemDisk }}</li>
+          </ul>
+        </div>
+        <dl class="info_grid">
           <div>
             <dt>{{ t.device }}</dt>
-            <dd>{{ disk.device || disk.source || '-' }}</dd>
+            <dd class="info_path">{{ disk.device || disk.source || '-' }}</dd>
           </div>
           <div>
             <dt>{{ t.mount }}</dt>
-            <dd>{{ disk.mount || t.unmounted }}</dd>
-          </div>
-          <div>
-            <dt>{{ t.size }}</dt>
-            <dd>{{ formatDiskSize(disk.size_bytes, locale) }}</dd>
+            <dd class="info_path">{{ disk.mount || t.unmounted }}</dd>
           </div>
           <div>
             <dt>{{ t.filesystem }}</dt>
@@ -278,15 +310,15 @@ function closeInitialization() {
           </div>
           <div>
             <dt>{{ t.transport }}</dt>
-            <dd>{{ disk.transport || '-' }}</dd>
+            <dd>{{ transport }}</dd>
           </div>
           <div>
             <dt>{{ t.model }}</dt>
             <dd>{{ disk.model || '-' }}</dd>
           </div>
-          <div>
-            <dt>{{ t.readOnlyLabel }}</dt>
-            <dd>{{ disk.read_only ? t.yes : t.no }}</dd>
+          <div v-if="disk.uuid">
+            <dt>{{ t.uuid }}</dt>
+            <dd class="info_path">{{ disk.uuid }}</dd>
           </div>
         </dl>
       </div>
@@ -330,7 +362,12 @@ function closeInitialization() {
           <p>{{ t.renameDescription }}</p>
           <label
             ><span>{{ t.volumeLabel }}</span
-            ><input v-model="renameLabel" maxlength="16" autocomplete="off" :disabled="renaming"
+            ><input
+              v-model="renameLabel"
+              name="rename_label"
+              maxlength="16"
+              autocomplete="off"
+              :disabled="renaming"
           /></label>
           <p v-if="renameError" class="operation_error" role="alert">{{ renameError }}</p>
           <button
@@ -338,7 +375,7 @@ function closeInitialization() {
             class="secondary_button"
             :disabled="renaming || !renameLabel.trim() || renameLabel.trim() === disk.name"
           >
-            {{ renaming ? t.renaming : t.renameConfirm }}
+            {{ renaming ? t.renaming : t.save }}
           </button>
         </form>
         <div v-if="disk.initializable" class="action_section danger_section">
@@ -412,12 +449,18 @@ function closeInitialization() {
       </p>
       <label
         ><span>{{ t.volumeLabel }}</span
-        ><input v-model="label" maxlength="16" autocomplete="off" :disabled="submitting"
+        ><input
+          v-model="label"
+          name="label"
+          maxlength="16"
+          autocomplete="off"
+          :disabled="submitting"
       /></label>
       <template v-if="available">
         <label class="check"
           ><input
             v-model="encrypt"
+            name="encrypt"
             type="checkbox"
             :disabled="submitting"
             data-testid="encrypt"
@@ -425,7 +468,7 @@ function closeInitialization() {
         >
         <template v-if="encrypt">
           <label class="check"
-            ><input v-model="automatic" type="checkbox" :disabled="submitting" />{{
+            ><input v-model="automatic" name="automatic" type="checkbox" :disabled="submitting" />{{
               t.automaticUnlock
             }}</label
           >
@@ -434,6 +477,7 @@ function closeInitialization() {
             ><span>{{ automatic ? t.setPasswordOptional : t.setPassword }}</span
             ><input
               v-model="erasePassword"
+              name="erase_password"
               type="password"
               autocomplete="new-password"
               :disabled="submitting || !secure"
@@ -443,6 +487,7 @@ function closeInitialization() {
             ><span>{{ t.repeatPassword }}</span
             ><input
               v-model="eraseRepeat"
+              name="erase_repeat"
               type="password"
               autocomplete="new-password"
               :disabled="submitting"
@@ -453,7 +498,11 @@ function closeInitialization() {
       <label
         ><span
           >{{ t.confirmDevice }}: <strong>{{ eraseTarget }}</strong></span
-        ><input v-model="confirmation" autocomplete="off" :disabled="submitting"
+        ><input
+          v-model="confirmation"
+          name="confirmation"
+          autocomplete="off"
+          :disabled="submitting"
       /></label>
       <p v-if="operationError" class="operation_error" role="alert">{{ operationError }}</p>
       <div class="modal_actions">
@@ -601,6 +650,91 @@ function closeInitialization() {
   color: var(--heading-color);
   font-size: 12px;
   white-space: pre-wrap;
+}
+
+.info_summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--table-border);
+  border-radius: 10px;
+  background: var(--nas-sunken);
+}
+
+.info_icon {
+  --app-icon-size: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.info_size {
+  display: grid;
+  gap: 2px;
+
+  strong {
+    color: var(--heading-color);
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  span {
+    color: #8194a4;
+    font-size: 12px;
+  }
+}
+
+.info_badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.status {
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: var(--status-bg);
+  color: var(--status-color);
+}
+
+.status.off {
+  background: var(--status-off-bg);
+  color: var(--status-off-color);
+}
+
+.info_badge {
+  padding: 5px 8px;
+  border: 1px solid var(--table-border);
+  border-radius: 5px;
+  color: var(--heading-color);
+}
+
+.info_grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+  gap: 10px;
+
+  div {
+    padding: 12px 14px;
+    border: 1px solid var(--table-border);
+    border-radius: 8px;
+  }
+}
+
+.info_path {
+  font-family: ui-monospace, monospace;
 }
 
 dl {

@@ -122,6 +122,7 @@ async function saveHeader() {
         ><span>{{ t.unlockPassword }}</span
         ><input
           v-model="unlockPassword"
+          name="unlock_password"
           type="password"
           autocomplete="off"
           :disabled="!secure || working"
@@ -152,6 +153,7 @@ async function saveHeader() {
         ><span>{{ keys.automatic ? t.currentKeyOptional : t.currentKey }}</span
         ><input
           v-model="current"
+          name="current"
           type="password"
           autocomplete="off"
           :disabled="!secure || working"
@@ -172,6 +174,7 @@ async function saveHeader() {
           ><span>{{ keys.password ? t.newPassword : t.setPassword }}</span
           ><input
             v-model="newPassword"
+            name="new_password"
             type="password"
             autocomplete="new-password"
             :disabled="!canChange || working"
@@ -181,13 +184,14 @@ async function saveHeader() {
           ><span>{{ t.repeatPassword }}</span
           ><input
             v-model="repeated"
+            name="repeated"
             type="password"
             autocomplete="new-password"
             :disabled="!canChange || working"
             data-testid="repeat_password"
         /></label>
         <button type="submit" class="secondary_button" :disabled="!passwordReady || working">
-          {{ t.savePassword }}
+          {{ t.save }}
         </button>
       </form>
 

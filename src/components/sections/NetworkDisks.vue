@@ -94,7 +94,18 @@ async function forget() {
   >
     <NasIcon :svg="network" class="network_icon" />
     <div class="network_text">
-      <h2>{{ t.kinds.network }}</h2>
+      <div class="network_header">
+        <h2>{{ t.kinds.network }}</h2>
+        <button
+          v-if="state.available && !open"
+          type="button"
+          class="add_button"
+          data-testid="network_add"
+          @click="start()"
+        >
+          {{ t.smbAdd }}
+        </button>
+      </div>
       <p v-if="!state.available" data-testid="network_unavailable">{{ t.smbUnavailable }}</p>
       <template v-else>
         <p v-if="!state.disks.length && !open">{{ t.smbEmpty }}</p>
@@ -148,12 +159,18 @@ async function forget() {
           <p v-if="!secure" class="hint">{{ t.encryptionNeedsHttps }}</p>
           <label
             ><span>{{ t.smbName }}</span
-            ><input v-model="form.name" maxlength="40" autocomplete="off" data-testid="smb_name"
+            ><input
+              v-model="form.name"
+              name="smb_name"
+              maxlength="40"
+              autocomplete="off"
+              data-testid="smb_name"
           /></label>
           <label
             ><span>{{ t.smbServer }}</span
             ><input
               v-model="form.server"
+              name="smb_server"
               maxlength="253"
               autocomplete="off"
               spellcheck="false"
@@ -161,12 +178,18 @@ async function forget() {
           /></label>
           <label
             ><span>{{ t.smbShare }}</span
-            ><input v-model="form.share" maxlength="80" autocomplete="off" data-testid="smb_share"
+            ><input
+              v-model="form.share"
+              name="smb_share"
+              maxlength="80"
+              autocomplete="off"
+              data-testid="smb_share"
           /></label>
           <label
             ><span>{{ t.smbUser }}</span
             ><input
               v-model="form.username"
+              name="smb_username"
               maxlength="64"
               autocomplete="off"
               data-testid="smb_user"
@@ -175,6 +198,7 @@ async function forget() {
             ><span>{{ editing ? t.smbPasswordKeep : t.smbPassword }}</span
             ><input
               v-model="form.password"
+              name="smb_password"
               type="password"
               autocomplete="off"
               :disabled="!secure"
@@ -184,6 +208,7 @@ async function forget() {
             ><span>{{ t.smbDomain }}</span
             ><input
               v-model="form.domain"
+              name="smb_domain"
               maxlength="64"
               autocomplete="off"
               data-testid="smb_domain"
@@ -200,22 +225,19 @@ async function forget() {
             >
               {{ t.smbTest }}
             </button>
+            <button type="button" class="secondary_button" @click="editing = undefined">
+              {{ t.cancel }}
+            </button>
             <button
               type="submit"
               class="secondary_button"
               :disabled="working || !complete"
               data-testid="smb_save"
             >
-              {{ t.smbSave }}
-            </button>
-            <button type="button" class="secondary_button" @click="editing = undefined">
-              {{ t.cancel }}
+              {{ t.save }}
             </button>
           </div>
         </form>
-        <button v-else type="button" class="add_button" data-testid="network_add" @click="start()">
-          {{ t.smbAdd }}
-        </button>
         <p v-if="networkError" class="operation_error" role="alert">{{ networkError }}</p>
       </template>
     </div>
@@ -238,10 +260,15 @@ async function forget() {
 
 .network_text {
   flex: 1;
-  max-width: 720px;
+  min-width: 0;
+
+  // The header spans the card, the rest keeps a readable width.
+  > :not(.network_header) {
+    max-width: 720px;
+  }
 
   h2 {
-    margin: 0 0 10px;
+    margin: 0;
     color: var(--heading-color);
     font-size: 17px;
   }
@@ -251,6 +278,15 @@ async function forget() {
     color: #718396;
     line-height: 1.5;
   }
+}
+
+.network_header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
 .share_list {
@@ -286,7 +322,6 @@ async function forget() {
 }
 
 .add_button {
-  margin-top: 8px;
   padding: 10px 18px;
   border: 1px solid var(--accent);
   border-radius: 8px;
