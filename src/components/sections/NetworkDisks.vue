@@ -215,7 +215,7 @@ async function forget() {
           /></label>
           <NasSwitch v-model="form.automatic" :label="t.smbAutomatic" testid="smb_automatic" />
           <p v-if="tested" class="hint" data-testid="smb_tested">{{ t.smbTestOk }}</p>
-          <div class="share_actions">
+          <div class="share_actions form_actions">
             <button
               type="button"
               class="secondary_button"
@@ -262,8 +262,9 @@ async function forget() {
   flex: 1;
   min-width: 0;
 
-  // The header spans the card, the rest keeps a readable width.
-  > :not(.network_header) {
+  // The header and the buttons of the form span the card, the rest keeps a readable width.
+  > :not(.network_header, form),
+  form > :not(.form_actions) {
     max-width: 720px;
   }
 
@@ -315,6 +316,11 @@ async function forget() {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.form_actions {
+  justify-content: flex-end;
+  margin-top: 24px;
 }
 
 .status.off {
