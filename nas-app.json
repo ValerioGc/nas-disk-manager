@@ -3,7 +3,7 @@
   "app": {
     "id": "nas-disk-manager",
     "name": "Dischi",
-    "version": "0.1.29",
+    "version": "0.1.30",
     "icon": "icon.svg",
     "category": "storage",
     "system": true

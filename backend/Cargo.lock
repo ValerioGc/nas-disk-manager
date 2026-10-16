@@ -247,7 +247,7 @@ dependencies = [
 
 [[package]]
 name = "nas-disk-manager-axum"
-version = "0.1.29"
+version = "0.1.30"
 dependencies = [
  "axum",
  "serde",
