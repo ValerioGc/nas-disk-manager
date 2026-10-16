@@ -86,7 +86,6 @@ export const it = {
     'Un disco contrassegnato non può essere espulso. L’impostazione resta valida quando il disco viene ricollegato.',
   nonRemovableUnavailable: 'Opzione disponibile solo per volumi con un file system.',
   lockFailed: 'Impossibile salvare l’impostazione del disco',
-  networkTitle: 'Dischi di rete',
   networkIntro:
     'Cartelle condivise di altri computer o NAS, aggiunte come dischi di rete. I dischi aggiunti compaiono in Explorer accanto agli altri.',
   networkBackup:

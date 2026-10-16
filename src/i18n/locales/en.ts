@@ -89,7 +89,6 @@ export const en: typeof it = {
     'A marked disk cannot be ejected. The setting stays when the disk is plugged in again.',
   nonRemovableUnavailable: 'Option available only for volumes with a file system.',
   lockFailed: 'The setting of the disk could not be saved',
-  networkTitle: 'Network disks',
   networkIntro:
     'Shared folders of other computers or NAS devices, added as network disks. Added disks appear in Explorer next to the others.',
   networkBackup:
