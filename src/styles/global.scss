@@ -1,0 +1,47 @@
+@forward '@valeriogc/nas-base-app/styles/global.scss';
+
+$text_soft: #718396;
+$text_faint: #8194a4;
+$danger: #b42318;
+
+@mixin status_badge {
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: var(--status-bg);
+  color: var(--status-color);
+
+  &.off {
+    background: var(--status-off-bg);
+    color: var(--status-off-color);
+  }
+}
+
+@mixin detail_list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  gap: 0 24px;
+
+  div {
+    border-bottom: 1px solid var(--table-border);
+    padding: 14px 0;
+    min-width: 0;
+  }
+
+  dt {
+    font-size: 11px;
+    color: $text_faint;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  dd {
+    margin: 5px 0 0;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+  }
+
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+  }
+}
