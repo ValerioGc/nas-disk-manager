@@ -9,11 +9,11 @@ $danger: #b42318;
   border-radius: 5px;
   background: var(--status-bg);
   color: var(--status-color);
+}
 
-  &.off {
-    background: var(--status-off-bg);
-    color: var(--status-off-color);
-  }
+@mixin status_badge_off {
+  background: var(--status-off-bg);
+  color: var(--status-off-color);
 }
 
 @mixin detail_list {

@@ -204,6 +204,10 @@ td small {
   overflow-wrap: anywhere;
 }
 
+.status.off {
+  @include status_badge_off;
+}
+
 .disk_actions {
   display: flex;
   justify-content: flex-end;

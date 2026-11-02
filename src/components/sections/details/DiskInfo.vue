@@ -124,6 +124,10 @@ dl {
   @include status_badge;
 }
 
+.status.off {
+  @include status_badge_off;
+}
+
 .info_badge {
   padding: 5px 8px;
   border: 1px solid var(--table-border);
