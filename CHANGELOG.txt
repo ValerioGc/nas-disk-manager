@@ -2,5 +2,11 @@
 
 All notable changes to nas-disk-manager are documented in this file.
 
+## [0.9.1]
+
+### Added
+
+- Enhance disk erasure functionality with encryption support.
+
 ## [0.9.0]
 - First app release
