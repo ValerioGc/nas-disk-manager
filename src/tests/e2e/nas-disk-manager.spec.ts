@@ -149,8 +149,9 @@ test('the cloud section keeps its introduction and the network one its shares', 
   await expect(app.locator('.summary')).toHaveCount(0);
   await expect(app.locator('.table_card')).toHaveCount(0);
   const intro = app.getByTestId('cloud_intro');
-  await expect(intro).toContainText('app File');
-  await expect(intro).toContainText('Backup');
+  await expect(intro).toContainText('servizi cloud');
+  await expect(intro).toContainText('backup cloud dell’app Backup');
+  await expect(intro).not.toContainText('rete');
   await expect(intro.getByRole('button', { name: 'Aggiungi' })).toBeVisible();
 
   await app.getByRole('button', { name: 'Dischi di rete' }).click();

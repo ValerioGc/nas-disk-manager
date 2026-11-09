@@ -34,11 +34,11 @@ describe('the cloud disks', () => {
       expect(intro.attributes('aria-label')).toBe(t.kinds.cloud);
       expect(intro.get('h2').text()).toBe(t.kinds.cloud);
       expect(intro.findAll('p').map((paragraph) => paragraph.text())).toEqual([
-        t.networkIntro,
-        t.networkBackup,
+        t.cloudIntro,
+        t.cloudBackup,
       ]);
       expect(intro.get('.section_icon').attributes('style')).toContain(cloud);
-      expect(intro.get('[data-testid="cloud_add"]').text()).toBe(t.networkAdd);
+      expect(intro.get('[data-testid="cloud_add"]').text()).toBe(t.cloudAdd);
     },
   );
 });

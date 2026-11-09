@@ -15,7 +15,7 @@ export const en: typeof it = {
       'Inventory of removable drives connected to the NAS, including capacity, status and eject controls.',
     network:
       'Shared folders of other computers or NAS devices of the local network, connected as disks.',
-    cloud: 'Management of network shares available for data storage.',
+    cloud: 'Cloud storage connected as disks, for the cloud backups.',
   },
   refresh: 'Refresh',
   nvmeDisks: 'NVMe disks',
@@ -70,6 +70,10 @@ export const en: typeof it = {
   smartTemperature: 'Temperature',
   smartPowerOnHours: 'Power-on hours',
   smartPowerCycles: 'Power cycles',
+  smartStandbyTitle: 'Disk in standby',
+  smartStandby:
+    'The disk is spun down and was not woken up to read the S.M.A.R.T. data. They can be read once it is in use again.',
+  smartReadAgain: 'Read again',
   smartRaw: 'Complete data',
   rename: 'Rename disk',
   renameDescription: 'Change the name shown for this data volume.',
@@ -92,39 +96,64 @@ export const en: typeof it = {
     'A marked disk cannot be ejected. The setting stays when the disk is plugged in again.',
   nonRemovableUnavailable: 'Option available only for volumes with a file system.',
   lockFailed: 'The setting of the disk could not be saved',
-  networkIntro:
-    'Shared folders of other computers or NAS devices, added as network disks. Added disks appear in Files next to the others.',
-  networkBackup:
-    'The same disks can be used as the destination of the cloud backups of the Backup app.',
-  networkAdd: 'Add',
+  cloudIntro: 'Storage of cloud services, connected to the NAS as disks.',
+  cloudBackup: 'Cloud disks are the destination of the cloud backups of the Backup app.',
+  cloudAdd: 'Add',
   encryption: 'Encryption',
   encryptionLocked: 'The volume is encrypted and locked, its files are not available.',
   encryptionOpen: 'The volume is encrypted and unlocked.',
+  encryptionKeys: 'Keys of the volume',
   keyPassword: 'Password',
   keyAutomatic: 'Automatic unlock',
   keyRecovery: 'Recovery key',
+  keySet: 'Set',
+  keyNotSet: 'Not set',
+  keyOn: 'On',
+  keyOff: 'Off',
   noSpareKey:
     'The volume opens only with the automatic unlock of this NAS. Set a password or create a recovery key.',
   encryptionNeedsHttps: 'Open the NAS over HTTPS to type a password.',
   unlockPassword: 'Password or recovery key',
+  lockedVolumeNote:
+    'The disk holds a locked encrypted volume. Erasing it needs its password or recovery key.',
   unlock: 'Unlock',
+  unlockAutomatic: 'Unlock with the key of the NAS',
+  unlockAutomaticDescription:
+    'The volume has the automatic unlock, so the NAS can open it again without a password.',
   unlocked: 'Volume unlocked',
   unlockedMessage: 'Its files are available in Files again.',
   lock: 'Lock',
+  lockTitle: 'Lock the volume',
   locked: 'Volume locked',
   lockedMessage: 'The volume stays locked until you unlock it.',
   lockDescription:
     'Locking the volume takes it out of Files and the backups until you unlock it, also after a restart.',
   currentKey: 'Current password or recovery key',
-  currentKeyOptional: 'Current password (optional with automatic unlock)',
+  currentPassword: 'Current password',
+  changePassword: 'Change password',
+  changePasswordDescription:
+    'The current password is needed. If you forgot it, the recovery key works in its place.',
+  definePassword: 'Set password',
+  definePasswordDescription:
+    'The password opens the volume even without the automatic unlock, for example after a lock or on another Linux computer.',
+  passwordsDiffer: 'The two passwords do not match.',
   automaticUnlock: 'Automatic unlock at startup',
-  automaticUnlockDescription:
-    'The NAS unlocks the volume by itself after startup, with a key kept on the system disk.',
+  automaticUnlockOn:
+    'The NAS unlocks the volume by itself at every start, with a key kept encrypted on the system disk and bound to this machine.',
+  automaticUnlockOff:
+    'After every start the volume stays locked until you unlock it with the password or the recovery key.',
+  automaticOn: 'Turn the automatic unlock on',
+  automaticOff: 'Turn the automatic unlock off',
+  automaticNeedsKey:
+    'To turn it off, first set a password or create a recovery key, or the volume would no longer open.',
+  automaticOnSaved: 'Automatic unlock on',
+  automaticOnMessage: 'The volume will unlock by itself at every start of the NAS.',
+  automaticOffSaved: 'Automatic unlock off',
+  automaticOffMessage: 'After the next start the password will be needed to unlock the volume.',
   automaticExposed:
     'The system disk of the NAS is not protected, so whoever takes it away with this disk can open it. With the password alone the volume stays protected, but it has to be unlocked after every start.',
   newPassword: 'New password',
   setPassword: 'Password',
-  setPasswordOptional: 'Password (optional)',
   repeatPassword: 'Repeat the password',
   passwordSaved: 'Password saved',
   recoveryKey: 'Recovery key',
@@ -145,6 +174,13 @@ export const en: typeof it = {
   formatTitle: 'Format data disk',
   formatWarning: 'This permanently deletes every volume and file on the disk.',
   encryptVolume: 'Encrypt the volume',
+  encryptDescription:
+    'Choose the password of the volume. Without the password, the recovery key or the automatic unlock the files cannot be read.',
+  encryptRecoveryHint:
+    'After the format, create a recovery key from the actions of the disk and keep it outside the NAS.',
+  encryptDisk: 'Encrypt disk',
+  encryptDiskDescription:
+    'The disk is not encrypted. To encrypt it the NAS formats it as a LUKS2 volume with the password you choose, and you can add the automatic unlock at startup.',
   encryptedType: 'Encrypted',
   lockedStatus: 'Locked',
   smbUnavailable: 'Network disks are not active on this NAS.',

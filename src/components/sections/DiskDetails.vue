@@ -9,7 +9,7 @@ import EraseDialog from '@/components/sections/details/EraseDialog.vue';
 import { useDiskManager } from '@/composables/diskManagerContext';
 import { notifyNasShell, readNasDiskSmart, renameNasDisk } from '@/services/nasShell';
 import type { DetailTab, EraseMode } from '@/types';
-import { physicalDisk } from '@/utils/disks';
+import { physicalDisk, wholeDiskOf } from '@/utils/disks';
 import closeIcon from '@/assets/icons/close.svg?url';
 
 const TABS: DetailTab[] = ['info', 'smart', 'actions'];
@@ -20,6 +20,7 @@ const { t, disks, selected, refresh, ejecting, isLocked, setLock, eject, availab
 const disk = computed(() => disks.value.find((item) => item.id === selected.value));
 const activeTab = ref<DetailTab>('info');
 const eraseMode = ref<EraseMode | null>(null);
+const eraseEncrypted = ref(false);
 const submitting = ref(false);
 const renaming = ref(false);
 const renameLabel = ref('');
@@ -45,6 +46,38 @@ const canFormat = computed(
     Boolean(disk.value.identity),
 );
 const external = computed(() => disk.value?.kind === 'external');
+/** The container of the selected entry: itself, or the closed or open volume it is the inside of. */
+const container = computed(() => {
+  const current = disk.value;
+  if (!current || !available.value) {
+    return null;
+  }
+  const entry = current.encryption
+    ? current
+    : disks.value.find((item) => item.id === current.parent && item.encryption);
+  return entry?.uuid ? entry : null;
+});
+
+const encryptedDisk = computed(() => {
+  const current = disk.value;
+  if (!current) {
+    return false;
+  }
+  const whole = wholeDiskOf(current, disks.value);
+  return disks.value.some((item) => item.encryption && wholeDiskOf(item, disks.value) === whole);
+});
+
+const canEncrypt = computed(
+  () =>
+    available.value &&
+    disk.value?.kind === 'local' &&
+    !disk.value.removable &&
+    !disk.value.system_disk &&
+    !disk.value.read_only &&
+    Boolean(disk.value.identity) &&
+    (disk.value.initializable || canFormat.value) &&
+    !encryptedDisk.value,
+);
 const locked = computed(() => Boolean(disk.value && isLocked(disk.value)));
 const noActions = computed(
   () =>
@@ -52,7 +85,7 @@ const noActions = computed(
     !disk.value?.initializable &&
     !external.value &&
     !canFormat.value &&
-    !(available.value && disk.value?.encryption),
+    !container.value,
 );
 
 // Only another disk resets the tab, not every new reading of the list.
@@ -67,6 +100,11 @@ watch(
   },
   { immediate: true },
 );
+
+function startErase(mode: EraseMode, encrypted = false) {
+  eraseEncrypted.value = encrypted;
+  eraseMode.value = mode;
+}
 
 function closeDetails() {
   if (!busy.value && !eraseMode.value) {
@@ -89,6 +127,11 @@ async function selectTab(tab: DetailTab) {
     smartError.value = result.error || t.value.smartUnavailable;
   }
   smartLoading.value = false;
+}
+
+function rereadSmart() {
+  smartData.value = null;
+  void selectTab('smart');
 }
 
 async function rename() {
@@ -161,6 +204,7 @@ async function ejectSelected() {
         :loading="smartLoading"
         :error="smartError"
         :data="smartData"
+        @retry="rereadSmart"
       />
       <div v-else class="tab_panel" role="tabpanel">
         <form v-if="canRename" class="action_section" @submit.prevent="rename">
@@ -187,15 +231,28 @@ async function ejectSelected() {
         <div v-if="disk.initializable" class="action_section">
           <h3>{{ t.initialize }}</h3>
           <p class="warning">{{ t.initializeWarning }}</p>
-          <button type="button" class="danger_button" @click="eraseMode = 'initialize'">
+          <button type="button" class="danger_button" @click="startErase('initialize')">
             {{ t.initialize }}
           </button>
         </div>
-        <EncryptionActions v-if="available && disk.encryption && disk.uuid" :disk="disk" />
+        <EncryptionActions v-if="container" :disk="container" />
+        <div v-if="canEncrypt" class="action_section" data-testid="encrypt_section">
+          <h3>{{ t.encryptDisk }}</h3>
+          <p>{{ t.encryptDiskDescription }}</p>
+          <p class="warning">{{ disk.initializable ? t.initializeWarning : t.formatWarning }}</p>
+          <button
+            type="button"
+            class="danger_button"
+            data-testid="encrypt_disk"
+            @click="startErase(disk.initializable ? 'initialize' : 'format', true)"
+          >
+            {{ t.encryptDisk }}
+          </button>
+        </div>
         <div v-if="canFormat" class="action_section" data-testid="format_section">
           <h3>{{ t.format }}</h3>
           <p class="warning">{{ t.formatWarning }}</p>
-          <button type="button" class="danger_button" @click="eraseMode = 'format'">
+          <button type="button" class="danger_button" @click="startErase('format')">
             {{ t.format }}
           </button>
         </div>
@@ -234,6 +291,7 @@ async function ejectSelected() {
     v-model:submitting="submitting"
     :disk="disk"
     :mode="eraseMode"
+    :encrypted="eraseEncrypted"
     @close="eraseMode = null"
   />
 </template>

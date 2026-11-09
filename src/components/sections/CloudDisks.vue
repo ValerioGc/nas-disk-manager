@@ -15,11 +15,10 @@ const { t } = useDiskManager();
     :title="t.kinds.cloud"
     data-testid="cloud_intro"
   >
-    <p>{{ t.networkIntro }}</p>
-    <p>{{ t.networkBackup }}</p>
-    <!-- Adding a cloud disk is not there yet. -->
+    <p>{{ t.cloudIntro }}</p>
+    <p>{{ t.cloudBackup }}</p>
     <button type="button" class="add_button" data-testid="cloud_add">
-      {{ t.networkAdd }}
+      {{ t.cloudAdd }}
     </button>
   </SectionCard>
 </template>

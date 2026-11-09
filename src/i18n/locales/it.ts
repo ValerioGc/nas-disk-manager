@@ -12,7 +12,7 @@ export const it = {
     external:
       'Inventario delle unità rimovibili collegate al NAS, con capacità, stato e opzioni di espulsione.',
     network: 'Cartelle condivise di altri computer o NAS della rete locale, collegate come dischi.',
-    cloud: 'Gestione delle condivisioni di rete disponibili per l’archiviazione dei dati.',
+    cloud: 'Spazi di archiviazione cloud collegati come dischi, per i backup cloud.',
   },
   refresh: 'Aggiorna',
   nvmeDisks: 'Dischi NVMe',
@@ -67,6 +67,10 @@ export const it = {
   smartTemperature: 'Temperatura',
   smartPowerOnHours: 'Ore di attività',
   smartPowerCycles: 'Cicli di accensione',
+  smartStandbyTitle: 'Disco in standby',
+  smartStandby:
+    'Il disco è fermo e non è stato svegliato per leggere i dati S.M.A.R.T. Si possono leggere quando torna in uso.',
+  smartReadAgain: 'Leggi di nuovo',
   smartRaw: 'Dati completi',
   rename: 'Rinomina disco',
   renameDescription: 'Modifica il nome mostrato per questo volume dati.',
@@ -89,39 +93,64 @@ export const it = {
     'Un disco contrassegnato non può essere espulso. L’impostazione resta valida quando il disco viene ricollegato.',
   nonRemovableUnavailable: 'Opzione disponibile solo per volumi con un file system.',
   lockFailed: 'Impossibile salvare l’impostazione del disco',
-  networkIntro:
-    'Cartelle condivise di altri computer o NAS, aggiunte come dischi di rete. I dischi aggiunti compaiono nell’app File accanto agli altri.',
-  networkBackup:
-    'Gli stessi dischi sono utilizzabili come destinazione dei backup cloud dell’app Backup.',
-  networkAdd: 'Aggiungi',
+  cloudIntro: 'Spazi di archiviazione di servizi cloud, collegati al NAS come dischi.',
+  cloudBackup: 'I dischi cloud sono la destinazione dei backup cloud dell’app Backup.',
+  cloudAdd: 'Aggiungi',
   encryption: 'Cifratura',
   encryptionLocked: 'Il volume è cifrato e bloccato, i suoi file non sono accessibili.',
   encryptionOpen: 'Il volume è cifrato e sbloccato.',
+  encryptionKeys: 'Chiavi del volume',
   keyPassword: 'Password',
   keyAutomatic: 'Sblocco automatico',
   keyRecovery: 'Chiave di recupero',
+  keySet: 'Impostata',
+  keyNotSet: 'Non impostata',
+  keyOn: 'Attivo',
+  keyOff: 'Disattivo',
   noSpareKey:
     'Il volume si apre solo con lo sblocco automatico di questo NAS. Imposta una password o crea una chiave di recupero.',
   encryptionNeedsHttps: 'Per inserire una password apri il NAS in HTTPS.',
   unlockPassword: 'Password o chiave di recupero',
+  lockedVolumeNote:
+    'Il disco contiene un volume cifrato bloccato. Per cancellarlo serve la sua password o la chiave di recupero.',
   unlock: 'Sblocca',
+  unlockAutomatic: 'Sblocca con la chiave del NAS',
+  unlockAutomaticDescription:
+    'Il volume ha lo sblocco automatico, quindi il NAS può riaprirlo anche senza password.',
   unlocked: 'Volume sbloccato',
   unlockedMessage: 'I file sono di nuovo disponibili nell’app File.',
   lock: 'Blocca',
+  lockTitle: 'Blocca il volume',
   locked: 'Volume bloccato',
   lockedMessage: 'Il volume resta bloccato finché non lo sblocchi.',
   lockDescription:
     'Bloccare il volume lo toglie dall’app File e dai backup finché non lo sblocchi, anche dopo un riavvio.',
   currentKey: 'Password attuale o chiave di recupero',
-  currentKeyOptional: 'Password attuale (facoltativa con lo sblocco automatico)',
+  currentPassword: 'Password attuale',
+  changePassword: 'Cambia password',
+  changePasswordDescription:
+    'Serve la password attuale. Se l’hai dimenticata puoi usare al suo posto la chiave di recupero.',
+  definePassword: 'Imposta password',
+  definePasswordDescription:
+    'La password apre il volume anche senza lo sblocco automatico, per esempio dopo un blocco o su un altro computer Linux.',
+  passwordsDiffer: 'Le due password non coincidono.',
   automaticUnlock: 'Sblocco automatico all’avvio',
-  automaticUnlockDescription:
-    'Il NAS sblocca il volume da solo dopo l’avvio, con una chiave conservata sul disco di sistema.',
+  automaticUnlockOn:
+    'Il NAS sblocca il volume da solo a ogni avvio, con una chiave conservata cifrata sul disco di sistema e legata a questa macchina.',
+  automaticUnlockOff:
+    'Dopo ogni avvio il volume resta bloccato finché non lo sblocchi con la password o con la chiave di recupero.',
+  automaticOn: 'Attiva lo sblocco automatico',
+  automaticOff: 'Disattiva lo sblocco automatico',
+  automaticNeedsKey:
+    'Per disattivarlo imposta prima una password o crea una chiave di recupero, altrimenti il volume non si aprirebbe più.',
+  automaticOnSaved: 'Sblocco automatico attivo',
+  automaticOnMessage: 'Il volume si sbloccherà da solo a ogni avvio del NAS.',
+  automaticOffSaved: 'Sblocco automatico disattivato',
+  automaticOffMessage: 'Dopo il prossimo avvio servirà la password per sbloccare il volume.',
   automaticExposed:
     'Il disco di sistema del NAS non è protetto, quindi chi lo porta via insieme a questo disco può aprirlo. Con la sola password il volume resta protetto, ma va sbloccato dopo ogni avvio.',
   newPassword: 'Nuova password',
   setPassword: 'Password',
-  setPasswordOptional: 'Password (facoltativa)',
   repeatPassword: 'Ripeti la password',
   passwordSaved: 'Password salvata',
   recoveryKey: 'Chiave di recupero',
@@ -141,6 +170,13 @@ export const it = {
   formatTitle: 'Formatta disco dati',
   formatWarning: 'L’operazione elimina definitivamente tutti i volumi e i file del disco.',
   encryptVolume: 'Cifra il volume',
+  encryptDescription:
+    'Scegli la password del volume. Senza la password, la chiave di recupero o lo sblocco automatico i file non sono leggibili.',
+  encryptRecoveryHint:
+    'Dopo la formattazione crea una chiave di recupero dalle azioni del disco e conservala fuori dal NAS.',
+  encryptDisk: 'Cifra disco',
+  encryptDiskDescription:
+    'Il disco non è cifrato. Per cifrarlo il NAS lo formatta come volume LUKS2 con la password che scegli, e puoi aggiungere lo sblocco automatico all’avvio.',
   encryptedType: 'Cifrato',
   lockedStatus: 'Bloccato',
   smbUnavailable: 'I dischi di rete non sono attivi su questo NAS.',

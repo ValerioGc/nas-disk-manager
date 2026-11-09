@@ -36,4 +36,5 @@ export interface SmartRow {
   label: string;
   value: unknown;
   unit?: string;
+  tone?: 'normal' | 'warning' | 'danger';
 }

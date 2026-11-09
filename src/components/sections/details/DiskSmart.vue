@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed } from 'vue';
-import { NasIcon, NasLoading } from '@valeriogc/nas-base-app';
+import { NasIcon, NasLoading, temperatureTone } from '@valeriogc/nas-base-app';
 import { useDiskManager } from '@/composables/diskManagerContext';
 import type { SmartRow } from '@/types';
 import detailsIcon from '@/assets/icons/details.svg?url';
@@ -11,6 +11,7 @@ const props = defineProps<{
   error: string;
   data: Record<string, unknown> | null;
 }>();
+const emit = defineEmits<{ retry: [] }>();
 const { t } = useDiskManager();
 
 function nested(...path: string[]): unknown {
@@ -24,6 +25,13 @@ function nested(...path: string[]): unknown {
   return value;
 }
 
+const standby = computed(() => nested('standby') === true);
+
+const temperature = computed(() => {
+  const value = nested('temperature', 'current');
+  return typeof value === 'number' ? value : undefined;
+});
+
 const rows = computed<SmartRow[]>(() => {
   const passed = nested('smart_status', 'passed');
   const health: SmartRow[] =
@@ -31,7 +39,18 @@ const rows = computed<SmartRow[]>(() => {
       ? [{ label: t.value.smartHealth, value: passed ? t.value.smartPassed : t.value.smartFailed }]
       : [];
   const metrics: SmartRow[] = [
-    { label: t.value.smartTemperature, value: nested('temperature', 'current'), unit: ' °C' },
+    {
+      label: t.value.smartTemperature,
+      value: temperature.value,
+      unit: ' °C',
+      tone:
+        temperature.value === undefined
+          ? undefined
+          : temperatureTone(
+              temperature.value,
+              nested('device', 'type') === 'nvme' ? 'nvme' : 'disk',
+            ),
+    },
     { label: t.value.smartPowerOnHours, value: nested('power_on_time', 'hours') },
     { label: t.value.smartPowerCycles, value: nested('power_cycle_count') },
   ];
@@ -51,11 +70,28 @@ const raw = computed(() => JSON.stringify(props.data, null, 2));
         <p>{{ error }}</p>
       </div>
     </div>
+    <div v-else-if="standby" class="smart_standby" role="status" data-testid="smart_standby">
+      <NasIcon :svg="detailsIcon" />
+      <div>
+        <h3>{{ t.smartStandbyTitle }}</h3>
+        <p>{{ t.smartStandby }}</p>
+      </div>
+      <button
+        type="button"
+        class="secondary_button"
+        data-testid="smart_retry"
+        @click="emit('retry')"
+      >
+        {{ t.smartReadAgain }}
+      </button>
+    </div>
     <template v-else-if="data">
       <dl>
         <div v-for="row in rows" :key="row.label">
           <dt>{{ row.label }}</dt>
-          <dd>{{ row.value }}{{ row.unit }}</dd>
+          <dd :class="row.tone && `tone_${row.tone}`" :data-tone="row.tone">
+            {{ row.value }}{{ row.unit }}
+          </dd>
         </div>
       </dl>
       <details>
@@ -72,7 +108,8 @@ dl {
   @include detail_list;
 }
 
-.smart_error {
+.smart_error,
+.smart_standby {
   @extend %fx_center;
   flex-direction: column;
   gap: $nas_status_gap;
@@ -100,6 +137,22 @@ dl {
     overflow-wrap: anywhere;
     max-width: 60ch;
   }
+}
+
+.smart_standby {
+  border-color: var(--nas-outline);
+  background: var(--nas-panel);
+  color: var(--accent);
+}
+
+.tone_warning {
+  color: var(--tone-warning);
+  font-weight: 650;
+}
+
+.tone_danger {
+  color: var(--nas-error);
+  font-weight: 650;
 }
 
 details {

@@ -97,6 +97,39 @@ describe('disk details operations', () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 
+  it('says a disk in standby was not woken up, and reads it again on request', async () => {
+    const read = vi
+      .spyOn(shell, 'readNasDiskSmart')
+      .mockResolvedValueOnce({ success: true, data: { standby: true } })
+      .mockResolvedValueOnce({ success: true, data: { temperature: { current: 50 } } });
+    await openDetails();
+    await tab(1);
+    await flushPromises();
+    const standby = wrapper.get('[data-testid="smart_standby"]');
+    expect(standby.attributes('role')).toBe('status');
+    expect(standby.get('h3').text()).toBe(messages.en.smartStandbyTitle);
+    expect(wrapper.find('.smart_panel dl').exists()).toBe(false);
+
+    await wrapper.get('[data-testid="smart_retry"]').trigger('click');
+    await flushPromises();
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="smart_standby"]').exists()).toBe(false);
+    const temperature = wrapper.get('.smart_panel dd');
+    expect(temperature.text()).toBe('50 °C');
+    expect(temperature.attributes('data-tone')).toBe('warning');
+  });
+
+  it('judges the temperature of an NVMe drive by its own limits', async () => {
+    vi.spyOn(shell, 'readNasDiskSmart').mockResolvedValue({
+      success: true,
+      data: { device: { type: 'nvme' }, temperature: { current: 50 } },
+    });
+    await openDetails();
+    await tab(1);
+    await flushPromises();
+    expect(wrapper.get('.smart_panel dd').attributes('data-tone')).toBe('normal');
+  });
+
   it('keeps the open tab and its data when the list is read again', async () => {
     const read = vi.spyOn(shell, 'readNasDiskSmart').mockResolvedValue({ success: true, data: {} });
     await openDetails();

@@ -15,8 +15,9 @@ export type CryptRequest =
       encrypt: boolean;
       automatic: boolean;
       password?: string;
+      current?: string;
     }
-  | { op: 'unlock'; uuid: string; password: string }
+  | { op: 'unlock'; uuid: string; password?: string }
   | { op: 'lock'; uuid: string }
   | { op: 'automatic'; uuid: string; enabled: boolean; password?: string }
   | { op: 'password'; uuid: string; current?: string; password: string }
